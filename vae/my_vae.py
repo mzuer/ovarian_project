@@ -123,3 +123,45 @@ class CNCVAE:
 
 
 
+def plot_2plots(ld_toplot_dt, raw_toplot_dt, labels, dr_type, 
+                ld_pca_evr=None, raw_pca_evr=None, file_name=None):
+    
+    assert ld_toplot_dt.shape[0] == raw_toplot_dt.shape[0]
+    assert ld_toplot_dt.shape[0] == len(labels)
+    
+    fig, axs = plt.subplots(1,2,figsize = (12,6))
+    palette = 'tab10'
+    g = sns.scatterplot(ld_toplot_dt[:,0], ld_toplot_dt[:,1],
+                    hue = list(labels),
+                    ax=axs[0],
+                    linewidth=0, s=25, alpha=0.9, palette = palette)
+    g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=len(set(labels)))
+    
+    if ld_pca_evr:
+                g.set(title='latent dims (explained variance ratio: {:.2f}'.format(ld_pca_evr) +")")
+    else:
+        g.set(title='latent dims')
+    
+    
+    g = sns.scatterplot(raw_toplot_dt[:,0], raw_toplot_dt[:,1],
+                    hue = list(labels),
+                    ax=axs[1],
+                    linewidth=0, s=25, alpha=0.9, palette = palette)
+    #g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=1)
+    
+    if raw_pca_evr:
+                g.set(title='full data (explained variance ratio: {:.2f}'.format(raw_pca_evr) +")")
+    else:
+        g.set(title='full data')
+    
+    g.legend_.remove()
+    
+    for ax in axs:
+        ax.set_xlabel('{} 1'.format(dr_type))
+        ax.set_ylabel('{} 2'.format(dr_type))
+    
+    fig.suptitle('{}'.format(dr_type), x=0.5, y=0.99, weight="bold")
+
+    if file_name:
+        plt.savefig(file_name, dpi=300) 
+        print("written : " + file_name)

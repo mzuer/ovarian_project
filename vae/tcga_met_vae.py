@@ -26,7 +26,7 @@ import pandas as pd
 import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-
+from scipy.stats import spearmanr
 
 wd = os.path.join('/home','marie','Documents','FREITAS_LAB','ovarian_project','vae')
 os.chdir(wd)
@@ -42,7 +42,7 @@ from models.common import sse, bce, mmd, sampling, kl_regu
 from misc.dataset import Dataset, DatasetWhole
 from misc.helpers import normalizeRNA,save_embedding
 
-from my_vae import CNCVAE
+from my_vae import *
 
 outfolder = os.path.join('TCGA_MET_VAE')
 os.makedirs(outfolder, exist_ok=True)
@@ -86,6 +86,7 @@ assert meth_data.shape[1] + nskip == ncolfull
 
 meth_data = meth_data.iloc[:,0:keepFeatures]
 assert meth_data.shape[1] == keepFeatures
+meth_data_df = meth_data.copy()
 meth_data = meth_data.values
 
 print("... # samples = " + str(meth_data.shape[0]))
@@ -160,185 +161,82 @@ df_plot['figo_stages_short'] = df_plot['figo_stages_short'].str.replace('A',"")
 df_plot['figo_stages_short'] = df_plot['figo_stages_short'].str.replace('B',"")
 df_plot['figo_stages_short'] = df_plot['figo_stages_short'].str.replace('C',"")
 
-# PCA
-pca = PCA(n_components=2)
-pca.fit(latent_repr)
-latent_repr_pca = pca.transform(latent_repr)
-assert latent_repr_pca.shape == (meth_data.shape[0], 2)
+all_label_cols = ['figo_stages_short', 'sample_types']
 
-fullData_pca = PCA(n_components=2)
-fullData_pca.fit(meth_data)
-fullData_pca = fullData_pca.transform(meth_data)
-assert fullData_pca.shape == (meth_data.shape[0], 2)
-
-
-outfile = os.path.join(outfolder, "latent_repr_pca" + outsuffix + ".png")
-
-fig, axs = plt.subplots(1,2,figsize = (12,6))
-palette = 'tab10'
-g = sns.scatterplot(latent_repr_pca[:,0], latent_repr_pca[:,1],
-                hue = list(df_plot['figo_stages_short']), 
-                ax=axs[0],
-                linewidth=0, s=15, alpha=0.7, palette = palette)
-g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=1)
-g.set(title="A")
-
-g = sns.scatterplot(fullData_pca[:,0], fullData_pca[:,1],
-                hue = list(df_plot['figo_stages_short']), 
-                ax=axs[1],
-                linewidth=0, s=15, alpha=0.7, palette = palette)
-g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=len(set(labels)))
-
-
-def plot_2plots(ld_toplot_dt, raw_toplot_dt, labels, dr_type, file_name=None):
+for labcol in all_label_cols:
     
-    assert ld_toplot_dt.shape[0] == raw_toplot_dt.shape[0]
-    assert ld_toplot_dt.shape[0] == len(labels)
+    # PCA
+    outfile = os.path.join(outfolder, "latent_vs_all_repr_" + labcol + "_PCA" + outsuffix + ".png")
+    pca = PCA(n_components=2)
+    pca.fit(latent_repr)
+    latent_repr_pca = pca.transform(latent_repr)
+    assert latent_repr_pca.shape == (meth_data.shape[0], 2)
+    pca2 = PCA(n_components=2)
+    pca2.fit(meth_data)
+    fullData_pca = pca2.transform(meth_data)
+    assert fullData_pca.shape == (meth_data.shape[0], 2)
+    plot_2plots(ld_toplot_dt=latent_repr_pca, 
+                raw_toplot_dt=fullData_pca, 
+                labels=df_plot[labcol], 
+                ld_pca_evr = pca.explained_variance_ratio_.sum(),
+                raw_pca_evr = pca2.explained_variance_ratio_.sum(),
+                dr_type="PCA", file_name=None)
     
-    fig, axs = plt.subplots(1,2,figsize = (12,6))
-    palette = 'tab10'
-    g = sns.scatterplot(ld_toplot_dt[:,0], ld_toplot_dt[:,1],
-                    hue = list(labels),
-                    ax=axs[0],
-                    linewidth=0, s=15, alpha=0.7, palette = palette)
-    g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=len(set(labels)))
-    g.set(title='latent dims')
+    # PLOT UMAP
+    outfile = os.path.join(outfolder, "latent_vs_all_repr_" + labcol + "_UMAP" + outsuffix + ".png")
+    mapper = umap.UMAP(n_neighbors=15, n_components=2).fit(latent_repr)
+    latent_repr_umap = mapper.transform(latent_repr)
+    assert latent_repr_umap.shape == (meth_data.shape[0], 2)
+    mapper2 = umap.UMAP(n_neighbors=15, n_components=2).fit(meth_data)
+    fullData_umap = mapper2.transform(meth_data)
+    assert fullData_umap.shape == (meth_data.shape[0], 2)
+    plot_2plots(ld_toplot_dt=latent_repr_umap, 
+                    raw_toplot_dt=fullData_umap, 
+                    labels=df_plot[labcol], 
+                    dr_type="UMAP", file_name=None)
     
-    g = sns.scatterplot(raw_toplot_dt[:,0], raw_toplot_dt[:,1],
-                    hue = list(labels),
-                    ax=axs[1],
-                    linewidth=0, s=15, alpha=0.7, palette = palette)
-    #g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=1)
-    g.set(title='full data')
-    g.legend_.remove()
     
-    for ax in axs:
-        ax.set_xlabel('{} 1'.format(dr_type))
-        ax.set_ylabel('{} 2'.format(dr_type))
-
-    
-    fig.suptitle('{}'.format(dr_type), x=0.5, y=0.99)
-
-
-    if file_name:
-        plt.savefig(file_name, dpi=300) 
-
-
-plot_2plots(ld_toplot_dt=latent_repr_pca, 
-            raw_toplot_dt=fullData_pca, 
-            labels=df_plot['figo_stages_short'], 
-            dr_type="PCA", file_name=None)
-
-
-
-plot_3plots(data_to_plot=latent_repr_pca, data_with_labels=df, type_='PCA', pca=pca, file_name=outfile)
-
-
-
-
-###########################################################################################
-    
-def plot_3plots(data_to_plot, data_with_labels,file_name='', type_ = 'PCA', pca=None):
-    
-    fig, axs = plt.subplots(1,3,figsize = (15,6))
-    palette = 'tab10'
-    ### ! depending on the version of matplotlib -> should pass a list to hue !!!!
-    g = sns.scatterplot(data_to_plot[:,0], data_to_plot[:,1],
-                        #hue = data_with_labels['ER_Expr'], 
-                        hue = list(data_with_labels['ER_Expr']), 
-                        ax=axs[0],linewidth=0, s=15, alpha=0.7, palette = palette)
-    g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=1)
-
-    g = sns.scatterplot(data_to_plot[:,0], data_to_plot[:,1],
-                        # hue = data_with_labels['Pam50Subtype'], 
-                        hue = list(data_with_labels['Pam50Subtype']), 
-                        ax=axs[1],linewidth=0, s=15, alpha=0.7, palette = palette)
-    g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
-    g = sns.scatterplot(data_to_plot[:,0], data_to_plot[:,1],
-                        # hue = data_with_labels['iC10'], 
-                        hue = list(data_with_labels['iC10']), 
-                        ax=axs[2],linewidth=0, s=15, alpha=0.7, palette = palette)
-    g.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=5)
-    #plt.
-    # ax[0].plot(latent_repr_pca[:,0], latent_repr_pca[:,1], '.')
-    # ax[0].plot(latent_repr_pca[:,0], latent_repr_pca[:,1], '.')
-    
-    for ax in axs:
-        ax.set_xlabel('{} 1'.format(type_))
-        ax.set_ylabel('{} 2'.format(type_))
-    
-    if type_ =='PCA':
-        fig.suptitle('{}\nPCA - explained variance ratio: {:.2f}'.format(file_name,pca.explained_variance_ratio_.sum()), x=0.5, y=0.99)
-    else:
-        fig.suptitle('{}\n{}'.format(file_name,type_), x=0.5, y=0.99)
-        
-    plt.tight_layout()
-    
-    if file_name != '':
-        plot_file_name = str.replace(file_name, '\\','_').split('.')[0]
-        #out_file_name = os.path.join(outfolder,'downstream_results/{}_{}.png'.format(plot_file_name, type_)) # r -> treated as raw string
-        out_file_name = os.path.join('{}_{}.png'.format(plot_file_name, type_)) # r -> treated as raw string
-        plt.savefig(out_file_name, dpi=300) 
-        print('... written: ' + out_file_name)
-    return
+    # PLOT TSNE
+    outfile = os.path.join(outfolder, "latent_vs_all_repr_" + labcol + "_TSNE" + outsuffix + ".png")
+    latent_repr_tsne = TSNE(n_components=2, perplexity=30 ).fit_transform(latent_repr)
+    assert latent_repr_tsne.shape == (meth_data.shape[0], 2)
+    fullData_tsne = TSNE(n_components=2, perplexity=30 ).fit_transform(meth_data)
+    assert fullData_tsne.shape == (meth_data.shape[0], 2)
+    plot_2plots(ld_toplot_dt=latent_repr_tsne, 
+                    raw_toplot_dt=fullData_tsne, 
+                    labels=df_plot[labcol], 
+                    dr_type="t-SNE", file_name=None)
     
 
 
 
-# PLOT PCA
-from sklearn.decomposition import PCA
-pca = PCA(n_components=2)
-pca.fit(latent_repr)
-latent_repr_pca = pca.transform(latent_repr)
-#plot_3plots(data_to_plot=latent_repr_pca, data_with_labels=df, type_='PCA', pca=pca)
-outfile = os.path.join(outfolder, "latent_repr_pca")
-plot_3plots(data_to_plot=latent_repr_pca, data_with_labels=df, type_='PCA', pca=pca, file_name=outfile)
 
 
-# PLOT UMAP
-data_to_umap = latent_repr
-
-mapper = umap.UMAP(n_neighbors=15, n_components=2).fit(data_to_umap)
-latent_repr_umap = mapper.transform(data_to_umap)
-plot_3plots(latent_repr_umap, df, type_='UMAP')
-outfile = os.path.join(outfolder, "latent_repr_umap")
-plot_3plots(data_to_plot=latent_repr_umap, data_with_labels=df, type_='UMAP', file_name=outfile)
-
-# PLOT TSNE
-
-latent_repr_tsne = TSNE(n_components=2, perplexity=30 ).fit_transform(latent_repr)
-plot_3plots(latent_repr_tsne, df, type_='tSNE')
-outfile = os.path.join(outfolder, "latent_repr_tsne")
-plot_3plots(data_to_plot=latent_repr_tsne, data_with_labels=df, type_='tSNE', file_name=outfile)
-    
-
-# PLOT UMAP for RAW MRNA
-mapper = umap.UMAP(n_neighbors=15, n_components=2).fit(mrna_data)
-latent_repr_umap = mapper.transform(mrna_data)
-outfile = os.path.join(outfolder, "latent_repr_umap_raw")
-plot_3plots(latent_repr_umap, df, type_='UMAP')
 
 #####################################################################################################################
 
-from scipy.stats import spearmanr
+
 correlations_all=[]
 p_values_all=[]
-for gene_i in range(mrna_data.shape[1]):
+for gene_i in range(meth_data.shape[1]):
     correlations=[]
     p_values=[]
     for latent_dim_i in range(latent_dims):
-        corr_, p_value = spearmanr(mrna_data[:,gene_i], latent_repr[:,latent_dim_i])
+        corr_, p_value = spearmanr(meth_data[:,gene_i], latent_repr[:,latent_dim_i])
         correlations.append(corr_)
         p_values.append(p_value)
     correlations_all.append(correlations)
     p_values_all.append(p_values)
 
 correlations_all = np.array(correlations_all)
-correlations_all_df = pd.DataFrame(correlations_all.T, columns = df.iloc[:,34:1034].columns)
+correlations_all_df = pd.DataFrame(correlations_all.T, columns = meth_data_df.columns)
 p_values_all = np.array(p_values_all)
-p_values_all_df  = pd.DataFrame(p_values_all.T, columns = df.iloc[:,34:1034].columns)
+p_values_all_df  = pd.DataFrame(p_values_all.T, columns = meth_data_df.columns)
 
-labels = df['Pam50Subtype'].values
+
+
+######### clustering
+labels = df_plot['figo_stages_short'].values
 
 lut = dict(zip(set(labels), sns.hls_palette(len(set(labels)))))
 col_colors = pd.DataFrame(labels)[0].map(lut)
@@ -354,22 +252,76 @@ plt.savefig(out_file_name, dpi=300)
 print('... written: ' + out_file_name)
 
 
-for latent_dim_i in range(latent_dims):
-    fig, ax = plt.subplots(figsize=(15,6))
-    corrs = correlations_all_df.iloc[latent_dim_i,:]
-    corrs.sort_values(ascending=False)[:30].plot.bar(ax=ax)
 
-out_file_name = os.path.join(outfolder, 'correlations_barplot.png')
+
+all_corrs = correlations_all_df.values
+all_corrs = all_corrs.flatten()
+
+#plt.hist(all_corrs, color = 'blue', edgecolor = 'black',
+#         bins = int(180/5))
+# seaborn histogram
+#sns.distplot(all_corrs, hist=True, kde=False, 
+#             bins=int(180/5), color = 'blue',
+#             hist_kws={'edgecolor':'black'})
+# Density Plot and Histogram of all arrival delays
+sns.distplot(all_corrs, hist=True, kde=True, 
+             bins=int(180/5), color = 'darkblue', 
+             hist_kws={'edgecolor':'black'},
+             kde_kws={'linewidth': 4})
+# Add labels
+plt.title('Histogram of corr values')
+plt.xlabel('Corr. coeff.')
+plt.ylabel('Probes')
+
+out_file_name = os.path.join(outfolder, 'correlations_distplot.png')
 plt.savefig(out_file_name, dpi=300) 
 print('... written: ' + out_file_name)
 
-for latent_dim_i in range(latent_dims):
-    fig, ax = plt.subplots(figsize=(15,6))
-    p_values = p_values_all_df.iloc[latent_dim_i,:]
-    p_values.sort_values(ascending=True)[:30].plot.bar(ax=ax)
-out_file_name = os.path.join(outfolder, 'pvalues_barplot.png')
-plt.savefig(out_file_name, dpi=300) 
-print('... written: ' + out_file_name)
 
+
+########## most correlated probes
+
+sorted_min = correlations_all_df.apply(min, axis=0).sort_values()
+sorted_max = correlations_all_df.apply(max, axis=0).sort_values(ascending=False)
+
+
+probe_dt = pd.read_csv(os.path.join('..','tcga_data','DOWNLOAD_TCGADATA_TCGABIOLINKS','TCGAbiolinks_OV_DNAmet27_hg38_probesDT.txt'),
+                 sep="\t")
+
+
+
+probe2genes = dict(zip(probe_dt['Composite.Element.REF'],probe_dt['Gene_Symbol']))
+
+sorted_min.index.map(probe2genes)
+# Index(['.', 'CYP2W1;CYP2W1', 'EFNB1', 'PDILT;PDILT', 'TAAR5', 'SLN;SLN;SLN',
+#        'INS;INS;INS;INS;INS;INS-IGF2;INS-IGF2', 'CEACAM8;PSG3;PSG3;PSG3;PSG3',
+#        'MNDA;MNDA', 'CD1B;CD1B',
+
+sorted_max.index.map(probe2genes)       
+# Index(['KRTAP19-7;KRTAP19-7', 'LCE2D', 'MBL2', 'SPRR3;SPRR3;SPRR3;SPRR3',
+#        'KRTAP19-3;KRTAP19-3', 'CLDN17', 'LCE4A;LCE4A',
+#        'MS4A2;MS4A2;MS4A2;MS4A2', '.', 'LYZL4;LYZL4',
+#        .
+
+
+# =============================================================================
+# for latent_dim_i in range(latent_dims):
+#     fig, ax = plt.subplots(figsize=(15,6))
+#     corrs = correlations_all_df.iloc[latent_dim_i,:]
+#     corrs.sort_values(ascending=False)[:30].plot.bar(ax=ax)
+# 
+# out_file_name = os.path.join(outfolder, 'correlations_barplot.png')
+# plt.savefig(out_file_name, dpi=300) 
+# print('... written: ' + out_file_name)
+# 
+# for latent_dim_i in range(latent_dims):
+#     fig, ax = plt.subplots(figsize=(15,6))
+#     p_values = p_values_all_df.iloc[latent_dim_i,:]
+#     p_values.sort_values(ascending=True)[:30].plot.bar(ax=ax)
+# out_file_name = os.path.join(outfolder, 'pvalues_barplot.png')
+# plt.savefig(out_file_name, dpi=300) 
+# print('... written: ' + out_file_name)
+# 
+# =============================================================================
     
 print('***** DONE\n' + start_time + " - " +  str(datetime.datetime.now().time()))

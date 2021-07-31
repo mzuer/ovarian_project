@@ -9,6 +9,9 @@ cat(paste0("> START ", startTime, "\n"))
 outFolder <- "DOWNLOAD_TCGADATA_TCGABIOLINKS"
 dir.create(outFolder)
 
+buildData <- FALSE
+
+if(buildData) {
 ######## 27k
 query.met2 <- GDCquery(project = "TCGA-OV", 
                       legacy = FALSE,
@@ -30,6 +33,12 @@ ov_dnaMet_27 <- ov.exp_27
 outFile <- file.path(outFolder, "TCGAbiolinks_OV_DNAmet27_hg38.Rdata")
 save(ov_dnaMet_27, file=outFile)
 cat(paste0("... written: ", outFile, "\n"))
+
+} else {
+outFile <- file.path(outFolder, "TCGAbiolinks_OV_DNAmet27_hg38.Rdata")
+ov_dnaMet_27 <- get(load(outFile))
+ov.exp_27 <- ov_dnaMet_27
+}
 
 ov.exp_27_clinic <- ov.exp_27@colData
 
@@ -78,7 +87,7 @@ stopifnot(rownames(ov.exp_27_probes_dt) == ov.exp_27_probes_dt$Composite.Element
 rownames(ov.exp_27_probes_dt) <- NULL
 
 outFile <- file.path(outFolder, "TCGAbiolinks_OV_DNAmet27_hg38_probesDT.txt")
-write.table(ov.exp_27_probes_dt, file =outFile, col.names = TRUE, row.names=FALSE, sep="\t", quote=F)
+write.table(ov.exp_27_probes_dt, file =outFile, col.names = TRUE, row.names=FALSE, sep="\n", quote=F)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -138,7 +147,7 @@ ov_met27_data_dt <- cbind(patient_dt, out_dt_filtAndSort)
 ov_met27_data_dt[1:5,1:5]
 
 outFile <- file.path(outFolder, "TCGAbiolinks_OV_DNAmet27_hg38_metDT.txt")
-write.table(ov_met27_data_dt, file =outFile, col.names = TRUE, row.names=FALSE, sep="\t", quote=F)
+write.table(ov_met27_data_dt, file =outFile, col.names = TRUE, row.names=FALSE, sep="\n", quote=F)
 cat(paste0("... written: ", outFile, "\n"))
 
 

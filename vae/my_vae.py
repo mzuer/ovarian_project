@@ -165,3 +165,4 @@ def plot_2plots(ld_toplot_dt, raw_toplot_dt, labels, dr_type,
     if file_name:
         plt.savefig(file_name, dpi=300) 
         print("written : " + file_name)
+        plt.close()

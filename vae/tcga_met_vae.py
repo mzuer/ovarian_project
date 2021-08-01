@@ -1,3 +1,33 @@
+
+# Choi 2020
+# Then, samples having a significant number ofmissing values are detected as outliers
+#  and discarded to minimize bias by applying inter-quartile range (IQR) method [34]. 
+#  Remaining missing values are imputed with median values.
+
+# wang et al. 2020
+# The deletion values of 401 samples containing
+# 27 573 CpG site were completed by using R software
+# package impute.31
+
+
+# Yang et al. 2019
+# We used the R package "minfi" (23) to filter low- quality methylation probes, 
+# evaluate cell type composition for each sample, and estimate methylation beta-values. 
+# Methyla- tion data were then quantile-normalized across samples, rank- normalized 
+# to remove potential outliers, and then regressed on covariates including age, 
+# sex, cell-type composition, and top ten principal components (PC) to eliminate 
+# potential experi- mental confounders and population structure
+
+# Teschendorff et al. 2009
+# imputation of missing b-valued
+# data was necessary and was accomplished using the k-nearest
+# neighbours procedure
+# 
+# normalisation across arrays was performed initially using a
+# variety of strategies: (a) do-nothing (b) separate quantile normal- isation of
+# the U and M channels and recomputation ofb-values, (c) quantile normalisation of b-values,
+#  (d) quantile normalisation followed by adjustment for batch, DNA input and 
+#  BSC efficiency effects, and (e) adjustment for batch, DNA input and BSC efficiency effects. 
 #
 import datetime
 start_time = str(datetime.datetime.now().time())
@@ -138,15 +168,10 @@ plt.title('Training and Validation loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.legend()
-plt.show()
-
 filename = os.path.join(outfolder, 'train_valid_loss'+ outsuffix +'.png')
 plt.savefig(filename, dpi=300) 
 print('... written: ' + filename)
-
-
-sys.exit(0)
-
+plt.close()
 #################### plot representations
 
 latent_repr = emb_train
@@ -180,7 +205,7 @@ for labcol in all_label_cols:
                 labels=df_plot[labcol], 
                 ld_pca_evr = pca.explained_variance_ratio_.sum(),
                 raw_pca_evr = pca2.explained_variance_ratio_.sum(),
-                dr_type="PCA", file_name=None)
+                dr_type="PCA", file_name=outfile)
     
     # PLOT UMAP
     outfile = os.path.join(outfolder, "latent_vs_all_repr_" + labcol + "_UMAP" + outsuffix + ".png")
@@ -193,7 +218,7 @@ for labcol in all_label_cols:
     plot_2plots(ld_toplot_dt=latent_repr_umap, 
                     raw_toplot_dt=fullData_umap, 
                     labels=df_plot[labcol], 
-                    dr_type="UMAP", file_name=None)
+                    dr_type="UMAP", file_name=outfile)
     
     
     # PLOT TSNE
@@ -205,7 +230,7 @@ for labcol in all_label_cols:
     plot_2plots(ld_toplot_dt=latent_repr_tsne, 
                     raw_toplot_dt=fullData_tsne, 
                     labels=df_plot[labcol], 
-                    dr_type="t-SNE", file_name=None)
+                    dr_type="t-SNE", file_name=outfile)
     
 
 
@@ -250,7 +275,7 @@ sns.clustermap(p_values_all_df)
 out_file_name = os.path.join(outfolder, 'pvalues_clustermap.png')
 plt.savefig(out_file_name, dpi=300) 
 print('... written: ' + out_file_name)
-
+plt.close()
 
 
 
@@ -276,7 +301,7 @@ plt.ylabel('Probes')
 out_file_name = os.path.join(outfolder, 'correlations_distplot.png')
 plt.savefig(out_file_name, dpi=300) 
 print('... written: ' + out_file_name)
-
+plt.close()
 
 
 ########## most correlated probes

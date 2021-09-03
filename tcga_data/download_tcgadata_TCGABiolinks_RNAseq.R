@@ -2,6 +2,18 @@ require(TCGAbiolinks)
 require(SummarizedExperiment)
 # Rscript download_tcgadata_TCGABiolinks_RNAseq.R
 
+
+# https://bioconductor.riken.jp/packages/3.3/bioc/vignettes/TCGAbiolinks/inst/doc/tcgaBiolinks.html#harmonized-data
+# https://f1000research.com/articles/5-1408
+# https://support.bioconductor.org/p/63981/#64004 #[ which counts to use with limma/voom]
+#   https://bioconductor.statistik.tu-dortmund.de/packages/3.6/bioc/vignettes/TCGAbiolinks/inst/doc/extension.html#download_gtex_data_available_through_the_recount2_project:
+# https://portal.gdc.cancer.gov/repository?facetTab=files&filters=%7B%22op%22%3A%22and%22%2C%22content%22%3A%5B%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22cases.primary_site%22%2C%22value%22%3A%5B%22Ovary%22%5D%7D%7D%2C%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22files.analysis.workflow_type%22%2C%22value%22%3A%5B%22HTSeq%20-%20Counts%22%5D%7D%7D%2C%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22files.experimental_strategy%22%2C%22value%22%3A%5B%22RNA-Seq%22%5D%7D%7D%5D%7D
+
+# ex of recount2 processing
+# https://github.com/ELELAB/LUAD_LUSC_TCGA_comparison/blob/master/6-recount/unifiedLUSC_Rail_18062018.R
+# #####Count tables as queried but transformed according to Rail-RNA workflow#####
+# eset.gtex<-assays(scale_counts(lusc.recount.gtex$GTEX_lung, round = TRUE))$counts
+
 # Ovarian Serous Cystadenocarcinoma (TCGA-OV)	TCGA-OV
 
 startTime <- Sys.time()
@@ -79,29 +91,102 @@ ovary_rec2_gtex_scaled <- scale_counts(ovary_rec2_gtex$gtex_ovary)
 
 ovary_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "ovary")
 ovary_rec2_tcga_scaled <- scale_counts(ovary_rec2_tcga$tcga_ovary)
+cgc_sample_id
+head(ovary_rec2_tcga_scaled@colData[,"cgc_sample_id"])
+table(ovary_rec2_tcga_scaled@colData[,"cgc_case_primary_site"])
+# Ovary: 430
+table(ovary_rec2_tcga_scaled@colData[,"cgc_case_clinical_stage"])
+# Stage IC  Stage IIA  Stage IIB  Stage IIC Stage IIIA Stage IIIB Stage IIIC   Stage IV 
+# 1          3          5         18          7         18        311         64 
+table(ovary_rec2_tcga_scaled@colData[,"cgc_sample_sample_type"])
+# Primary Tumor Recurrent Tumor 
+# 422               8 
+
+
+table(ovary_rec2_tcga_scaled@colData[,"cgc_case_tumor_status"])
+# TUMOR FREE WITH TUMOR 
+# 96        283 
 
 
 ## Extract counts and filter out lowly expressed geens
-gtex_counts <- assays(ovary_rec2_gtex_scaled)$counts
-gtex_filter <- rowMeans(gtex_counts) > 0.5
-gtex_counts <- gtex_counts[gtex_filter,]
-dim(gtex_counts)
-gtex_counts[1:5,1:5]
-# 37644   108
-tcga_counts <- assays(ovary_rec2_tcga_scaled)$counts
-tcga_filter <- rowMeans(tcga_counts) > 0.5
-tcga_counts <- tcga_counts[tcga_filter,]
-dim(tcga_counts)
-tcga_counts[1:5,1:5]
-# 38670   430
+gtex_counts_all <- assays(ovary_rec2_gtex_scaled)$counts
+gtex_filter <- rowMeans(gtex_counts_all) > 0.5
+sum(gtex_filter)
+# 37644
 
-common_genes <- intersect(rownames(gtex_counts), rownames(tcga_counts))
-gtex_counts <- gtex_counts[common_genes,]
-tcga_counts <- tcga_counts[common_genes,]
-stopifnot(dim(gtex_counts)[1] == dim(tcga_counts)[1])
+tcga_counts_all <- assays(ovary_rec2_tcga_scaled)$counts
+tcga_filter <- rowMeans(tcga_counts_all) > 0.5
+sum(tcga_filter)
+# 38670
 
-all_counts <- cbind(gtex_counts, tcga_counts)
-stopifnot(rownames(all_counts) == common_genes)
+tcga_symbs <- sapply(data.frame(ovary_rec2_tcga_scaled@rowRanges@elementMetadata)$symbol, function(x)x[[1]])
+tcga_ids <- as.character(data.frame(ovary_rec2_tcga_scaled@rowRanges@elementMetadata)$gene_id)
+stopifnot(rownames(tcga_counts_all) == tcga_ids)
+stopifnot(length(tcga_ids) == length(tcga_symbs))
+stopifnot(length(tcga_ids) == length(tcga_filter))   
+stopifnot(!duplicated(tcga_ids))
+tcga_g2s <- setNames(tcga_symbs[tcga_filter], tcga_ids[tcga_filter]) ##### keep only the IDs that have passed the count filter
+any(duplicated(as.character(tcga_g2s)))
+tcga_g2s_filt <- tcga_g2s[!duplicated(tcga_g2s)]
+tcga_g2s_filt <- tcga_g2s_filt[!is.na(tcga_g2s_filt)]
+
+
+gtex_symbs <- sapply(data.frame(ovary_rec2_gtex_scaled@rowRanges@elementMetadata)$symbol, function(x)x[[1]])
+gtex_ids <- as.character(data.frame(ovary_rec2_gtex_scaled@rowRanges@elementMetadata)$gene_id)
+stopifnot(rownames(gtex_counts_all) == gtex_ids)
+stopifnot(length(gtex_ids) == length(gtex_symbs))
+stopifnot(length(gtex_ids) == length(gtex_filter))
+stopifnot(!duplicated(gtex_ids))
+gtex_g2s <- setNames(gtex_symbs[gtex_filter], gtex_ids[gtex_filter]) ##### keep only the IDs that have passed the count filter
+any(duplicated(as.character(gtex_g2s)))
+gtex_g2s_filt <- gtex_g2s[!duplicated(gtex_g2s)]
+gtex_g2s_filt <- gtex_g2s_filt[!is.na(gtex_g2s_filt)]
+
+# I need to do like this because I can have a given gene symbol 
+# mapped to  ENSG in tcga and to a different ENSG in gtex
+# so with this table I ensure exact gene ID gene Symbol matching
+common_dt = data.frame(
+  geneSymb=c(as.character(tcga_g2s_filt), as.character(gtex_g2s_filt)),
+  geneID=c(names(tcga_g2s_filt),names(gtex_g2s_filt)),stringsAsFactors = FALSE
+)
+common_dt$filtid <- paste0(common_dt$geneID, "_", common_dt$geneSymb)
+id_to_keep <- names(table(common_dt$filtid))[which(as.numeric(table(common_dt$filtid)) == 2)]
+intersect_dt <- common_dt[common_dt$filtid %in% id_to_keep,]
+stopifnot(nrow(intersect_dt) == nrow(unique(intersect_dt)) * 2)
+intersect_dt <- unique(intersect_dt)
+
+common_symbs <- as.character(intersect_dt$geneSymb)
+common_ids <- as.character(intersect_dt$geneID)
+stopifnot(length(common_symbs) == length(common_ids))
+stopifnot(!duplicated(common_ids))
+stopifnot(!duplicated(common_symbs))
+length(common_ids)
+# 20698
+g2s <- setNames(as.character(intersect_dt$geneSymb), as.character(intersect_dt$geneID))
+
+new_rownames1 <- as.character(gtex_g2s_filt[common_ids])
+new_rownames2 <- as.character(tcga_g2s_filt[common_ids])
+stopifnot(length(new_rownames2) == length(new_rownames1))
+stopifnot(new_rownames2==new_rownames1)
+stopifnot(new_rownames2==g2s[common_ids])
+
+
+sub_gtex_counts <- gtex_counts_all[common_ids,]
+sub_tcga_counts <- tcga_counts_all[common_ids,]
+stopifnot(rownames(sub_gtex_counts) == rownames(sub_tcga_counts))
+all_counts <- cbind(sub_gtex_counts, sub_tcga_counts)
+stopifnot(rownames(all_counts)==names(g2s[common_ids]))
+rownames(all_counts) <- g2s[common_ids]
+dim(all_counts)
+stopifnot(length(new_rownames1) == nrow(all_counts))
+stopifnot(ncol(sub_gtex_counts) + ncol(sub_tcga_counts) == ncol(all_counts))
+
+# common_genes <- intersect(rownames(gtex_counts), rownames(tcga_counts))
+# gtex_counts <- gtex_counts[common_genes,]
+# tcga_counts <- tcga_counts[common_genes,]
+# stopifnot(dim(gtex_counts)[1] == dim(tcga_counts)[1])
+# all_counts <- cbind(gtex_counts, tcga_counts)
+# stopifnot(rownames(all_counts) == common_genes)
 # [1] 35120   538
 
 library("limma")
@@ -114,7 +199,7 @@ dge <- DGEList(counts = all_counts)
 dge <- calcNormFactors(dge)
 
 ## Specify our design matrix
-samples_groups <- c(rep("gtex", ncol(gtex_counts)), rep("tcga", ncol(tcga_counts))) 
+samples_groups <- c(rep("gtex", ncol(sub_gtex_counts)), rep("tcga", ncol(sub_tcga_counts))) 
 my_group_design <- factor(samples_groups, levels = c("gtex", "tcga"))
 my_design <- model.matrix( ~ my_group_design)
 
@@ -142,11 +227,28 @@ limma::plotMA(fit)
 limma::volcanoplot(fit)
 ## Extract data from limma-voom results
 top <- topTable(fit,
-                number = Inf, sort.by = "none",
+                number = Inf, sort.by = "p",
                 coef = ncol(v$design))
 
 
+library("clusterProfiler")
+library("org.Hs.eg.db")
 
+# https://bioconductor.org/packages/devel/workflows/vignettes/recountWorkflow/inst/doc/recount-workflow.html
+
+## Perform enrichment analysis for Biological Process (BP)
+## Note that the argument is keytype instead of keyType in Bioconductor 3.5
+enrich_go <- enrichGO(
+  gene = rownames(top)[top$adj.P.Val < 0.001],
+  OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+  pAdjustMethod = "BH", pvalueCutoff = 0.01, qvalueCutoff = 0.05,
+  universe = rownames(top)
+)
+
+## Visualize enrichment results
+# enrichplot::dotplot(enrich_go, font.size = 7, orderBy="GeneRatio")
+
+# https://bioconductor.org/packages/devel/workflows/vignettes/recountWorkflow/inst/doc/recount-workflow.html
 
  # is possible to use the function scale_counts from the recount package. 
 # After that, we merged the two prepared gene count matrices, normalized for GC-content and applied the quantile filtering with a 25% cut-off. The data were then loaded into the TCGAanalyze_DEA function for comparison of normal samples versus cancer samples using the limma-voom pipeline. 

@@ -181,6 +181,8 @@ dim(all_counts)
 stopifnot(length(new_rownames1) == nrow(all_counts))
 stopifnot(ncol(sub_gtex_counts) + ncol(sub_tcga_counts) == ncol(all_counts))
 
+
+
 # common_genes <- intersect(rownames(gtex_counts), rownames(tcga_counts))
 # gtex_counts <- gtex_counts[common_genes,]
 # tcga_counts <- tcga_counts[common_genes,]

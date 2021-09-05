@@ -3,6 +3,9 @@ require(SummarizedExperiment)
 require(recount)
 # Rscript download_tcga_gtex_recount2.R
 
+# https://github.com/LieberInstitute/recount-brain/blob/master/SupplementaryTable2.csv
+
+
 startTime <- Sys.time()
 
 cat(paste0("> START ", startTime, "\n"))
@@ -10,6 +13,12 @@ cat(paste0("> START ", startTime, "\n"))
 outFolder <- "DOWNLOAD_TCGA_GTEX_RECOUNT2"
 dir.create(outFolder)
 
+dataset_rowMeans_filter <- 0
+
+tcga_purity_thresh <- 0.6
+# taken from Lucchetta1 et al. 2019 https://bmccancer.biomedcentral.com/track/pdf/10.1186/s12885-019-5965-x
+# https://github.com/ELELAB/LUAD_LUSC_TCGA_comparison/blob/master/6-recount/unifiedLUAD_18062018.R
+# purityinfo.R.luad<-TCGAtumor_purity(tcga.barcodes, 0, 0, 0, 0, 0.6)
 
 ovary_rec2_gtex <- TCGAquery_recount2(project="gtex", tissue = "ovary")
 ovary_rec2_gtex_scaled <- scale_counts(ovary_rec2_gtex$gtex_ovary)
@@ -49,12 +58,14 @@ rownames(gtex_sampleAnnot) <- rownames(gtex_sampleAnnot_tmp)
 
 ## Extract counts and filter out lowly expressed genes
 gtex_counts_all <- assays(ovary_rec2_gtex_scaled)$counts
-gtex_filter <- rowMeans(gtex_counts_all) > 0.5
+stopifnot(gtex_counts_all >= 0)
+gtex_filter <- rowMeans(gtex_counts_all) >= dataset_rowMeans_filter
 sum(gtex_filter)
 # 37644
 
 tcga_counts_all <- assays(ovary_rec2_tcga_scaled)$counts
-tcga_filter <- rowMeans(tcga_counts_all) > 0.5
+stopifnot(tcga_counts_all >= 0)
+tcga_filter <- rowMeans(tcga_counts_all) >= dataset_rowMeans_filter
 sum(tcga_filter)
 # 38670
 
@@ -114,13 +125,13 @@ sub_gtex_counts <- gtex_counts_all[common_ids,]
 sub_tcga_counts <- tcga_counts_all[common_ids,]
 stopifnot(rownames(sub_gtex_counts) == rownames(sub_tcga_counts))
 
-stopifnot(colnames(gtex_counts_all) == rownames(gtex_sampleAnnot))
+stopifnot(colnames(sub_gtex_counts) == rownames(gtex_sampleAnnot))
 stopifnot(!duplicated(gtex_sampleAnnot$sampid))
-colnames(gtex_counts_all) <- gtex_sampleAnnot$sampid
+colnames(sub_gtex_counts) <- gtex_sampleAnnot$sampid
 
-stopifnot(colnames(tcga_counts_all) == rownames(tcga_sampleAnnot))
+stopifnot(colnames(sub_tcga_counts) == rownames(tcga_sampleAnnot))
 stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
-colnames(tcga_counts_all) <- tcga_sampleAnnot$cgc_sample_id
+colnames(sub_tcga_counts) <- tcga_sampleAnnot$cgc_sample_id
 
 all_counts <- cbind(sub_gtex_counts, sub_tcga_counts)
 stopifnot(rownames(all_counts)==names(g2s[common_ids]))
@@ -129,7 +140,7 @@ dim(all_counts)
 stopifnot(length(new_rownames1) == nrow(all_counts))
 stopifnot(ncol(sub_gtex_counts) + ncol(sub_tcga_counts) == ncol(all_counts))
 
-outFile <- file.path(outFolder, "all_counts.Rdata")
+outFile <- file.path(outFolder, paste0("all_counts_dsCountsGe_",dataset_rowMeans_filter,".Rdata"))
 save(all_counts, file=outFile)
 cat(paste0("... written ", outFile, "\n"))
 
@@ -144,4 +155,56 @@ save(gtex_sampleAnnot, file=outFile)
 cat(paste0("... written ", outFile, "\n"))
 
 
+
+##################################################
+cat(paste0("****** DONE"))
+cat(paste0(startTime, " - ", Sys.time(),  "\n"))
+
+
+
+require(TCGAbiolinks)
+
+#the following lines are only to query the TCGA data 
+query_ov<- GDCquery(project = "TCGA-OV",
+                      data.category = "Transcriptome Profiling",
+                      data.type = "Gene Expression Quantification", 
+                      workflow.type = "HTSeq - Counts")
+
+
+samplesOv <- getResults(query_ov,cols=c("cases"))
+
+
+dataSmTP_ov <- TCGAquery_SampleTypes(barcode = samplesOv,
+                                       typesample = "TP")
+
+dataSmNT_ov <- TCGAquery_SampleTypes(barcode = samplesOv,
+                                       typesample = "NT")
+
+
+
+query.luad2 <- GDCquery(project = "TCGA-LUAD",
+                        data.category = "Transcriptome Profiling",
+                        data.type = "Gene Expression Quantification", 
+                        workflow.type = "HTSeq - Counts",
+                        barcode = c(dataSmTP.luad, dataSmNT.luad))
+
+
+GDCdownload(query=query.luad2)
+
+dataPrep1.luad <- GDCprepare(query = query.luad2, 
+                             save = TRUE )
+
+purityinfo_ov <-TCGAtumor_purity(xx, 0, 0, 0, 0, 0.6)
+
+
+#####getting samples with more than 60% tumor purity and removing discordant samples
+
+tcga.barcodes<-c(dataSmTP.luad, dataSmNT.luad)
+dataSmTP.luad.pure.R<-purityinfo.R.luad$pure
+tcga.pure_barcodes<-c(dataSmTP.luad.pure.R, dataSmNT.luad)
+
+
+uuid.tcga<-barcodeToUUID(tcga.pure_barcodes)$case_id
+uuid.tcga.normal<-barcodeToUUID(dataSmNT.luad)$case_id
+uuid.tcga.cancer<-barcodeToUUID(dataSmTP.luad.pure.R)$case_id
 

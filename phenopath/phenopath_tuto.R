@@ -3,15 +3,15 @@ require(phenopath)
 require(tidyr)
 set.seed(123L)
 
+# https://github.com/kieranrcampbell/phenopath_analyses/tree/master/scripts
+
 # simulate data according to PP model
 sim <- simulate_phenopath()
 # 
 # parameters is a data frame with the simulated parameters, with a column for each of the parameters α, β and λ
 # , and a row for each gene. There is an additional column specifying from which regime that gene has been simulated (see ?simulate_phenopath for details).
-# y is the N×G
-# matrix of gene expression
-# x is the N
-# -length vector of covariates
+# y is the N×G matrix of gene expression
+# x is the N -length vector of covariates (-1 or 1)
 # z is the true latent pseudotimes
 # By default this simulates the model for N=100 cells and G=40 genes.
 # For 8 representative genes we can visualise what the expression looks like over pseudotime:

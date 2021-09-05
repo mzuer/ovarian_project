@@ -105,6 +105,9 @@ pca_ov <- prcomp(ov_data_filteredT)
 pca_ov_lowrepr <- pca_ov$x
 stopifnot(nrow(pca_ov_lowrepr) == nGTEX+nTCGA)
 
+pc2 <- pca_ov_lowrepr[,2]
+pc1 <- pca_ov_lowrepr[,1]
+
 dev.off()
 plot(x = pca_ov_lowrepr[,1],
      y = pca_ov_lowrepr[,2],
@@ -144,6 +147,122 @@ mycovar[mycovar == 0] <- "TCGA"
 mycovar <- factor(mycovar, levels=c("GTEX", "TCGA"))
 stopifnot(!is.na(mycovar))
 fit <- phenopath(ov_data_filteredT, mycovar, elbo_tol = 1e-6, thin = 40)
+
+# it is important to check convergence with a call to plot_elbo(fit) to ensure the ELBO is approximately flat:
+  
+  plot_elbo(fit)
+  
+  dev.off()
+  qplot(pc1, trajectory(fit)) +
+    xlab("pc1") + ylab("Phenopath z")
+  
+  dev.off()
+  qplot(pc2, trajectory(fit)) +
+    xlab("pc2") + ylab("Phenopath z")
+  
+
+  gene_names <- colnames(ov_data_filteredT)
+  
+  df_beta <- data.frame(beta = interaction_effects(fit),
+                        beta_sd = interaction_sds(fit),
+                        is_sig = significant_interactions(fit),
+                        gene = gene_names)
+  
+  # from 
+  df_beta$gene <- fct_relevel(df_beta$gene, gene_names)
+  
+  ggplot(df_beta, aes(x = gene, y = beta, color = is_sig)) + 
+    geom_point() +
+    geom_errorbar(aes(ymin = beta - 2 * beta_sd, ymax = beta + 2 * beta_sd)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+          axis.title.x = element_blank()) +
+    ylab(expression(beta)) +
+    scale_color_brewer(palette = "Set2", name = "Significant")
+  
+  
+  which_largest <- which.max(df_beta$beta)
+  
+  df_large <- data.frame(
+    y = ov_data_filteredT[, which_largest],
+    x = mycovar,
+    z = trajectory(fit)
+  )
+  dev.off()
+  
+  ggplot(df_large, aes(x = z, y = y, color = x)) +
+    geom_point() +
+    scale_color_brewer(palette = "Set1") +
+    stat_smooth()
+  
+  
+gene_lab_dt <- get(load(file.path(inFolder, "out_intersect_dt.RData")))
+save(out_intersect_dt, file=outFile)
+cat(paste0("... written ", outFile, "\n"))
+
+
+gene_lab_dt$geneID_short <-gsub("\\..*", "",gene_lab_dt$geneID)
+
+  
+stopifnot(colnames(ov_data_filteredT))
+stopifnot(colnames(ov_data_filteredT) %in% gene_lab_dt$geneID_short)  
+
+unique(sapply(colnames(ov_data_filteredT), function(x) sum(x %in% gene_lab_dt$geneID_short)))
+# [1] 1   # there is no ambiguity in gene name
+sub_gene_lab_dt <- gene_lab_dt[gene_lab_dt$geneID_short %in% colnames(ov_data_filteredT), ]
+sub_gene_lab_dt$mapping_source <- NULL
+sub_gene_lab_dt <- unique(sub_gene_lab_dt)
+any(duplicated(sub_gene_lab_dt$geneID_short))
+any(duplicated(sub_gene_lab_dt$geneSymb))
+
+sub_gene_lab_dt[sub_gene_lab_dt$geneID_short == df_beta$gene[which_largest],]
+# PLXNC1 -> tumor suppressor gene !
+
+
+stopifnot(rownames(ov_data_filteredT) == c(gtex_annot_dt$sampid, tcga_annot_dt$cgc_sample_id))
+
+
+all_traj <- setNames(trajectory(fit), rownames(ov_data_filteredT))
+stopifnot(names(all_traj) == c(gtex_annot_dt$sampid, tcga_annot_dt$cgc_sample_id))
+
+stg_ords <-c(  "Stage IC", "Stage IIA" ,"Stage IIB" , "Stage IIC","Stage IIIA", "Stage IIIB","Stage IIIC",   "Stage IV")
+
+tcga_traj_dt <- data.frame(
+  tcga_samp = tcga_annot_dt$cgc_sample_id,
+  tcga_stage = tcga_annot_dt$cgc_case_clinical_stage,
+  pseudotime = all_traj[tcga_annot_dt$cgc_sample_id],
+  stringsAsFactors = FALSE
+)
+sum(is.na(tcga_traj_dt$tcga_stage))
+# 3
+tcga_traj_dt <- tcga_traj_dt[!is.na(tcga_traj_dt$tcga_stage),]
+stopifnot(!is.na(tcga_traj_dt))
+tcga_traj_dt$tcga_stage <- factor(tcga_traj_dt$tcga_stage, levels=stg_ords)
+stopifnot(!is.na(tcga_traj_dt$tcga_stage))
+
+ggplot(tcga_traj_dt, aes(x= tcga_stage, y= pseudotime) )+
+  geom_boxplot()
+
+
+
+age_ords <- sort(unique(gtex_annot_dt$AGE))
+  
+gtex_traj_dt <- data.frame(
+    gtex_samp = gtex_annot_dt$sampid,
+  gtex_age = gtex_annot_dt$AGE,
+  pseudotime = all_traj[gtex_annot_dt$sampid],
+  stringsAsFactors = FALSE
+)
+sum(is.na(gtex_traj_dt$gtex_age))
+# 3
+gtex_traj_dt <- gtex_traj_dt[!is.na(gtex_traj_dt$gtex_age),]
+stopifnot(!is.na(gtex_traj_dt))
+gtex_traj_dt$gtex_age <- factor(gtex_traj_dt$gtex_age, levels=age_ords)
+stopifnot(!is.na(gtex_traj_dt$gtex_age))
+
+ggplot(gtex_traj_dt, aes(x= gtex_age, y= pseudotime) )+
+  geom_boxplot()
+
+
 
 
 ##################################################

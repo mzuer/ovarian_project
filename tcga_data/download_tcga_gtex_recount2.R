@@ -34,7 +34,8 @@ ovary_rec2_tcga_scaled <- scale_counts(ovary_rec2_tcga$tcga_ovary)
 stopifnot(ovary_rec2_tcga_scaled@colData[,"cgc_case_primary_site"] == "Ovary")
 
 
-tcgacols <- names(ovary_rec2_tcga_scaled@colData)[grepl("cgc_", names(ovary_rec2_tcga_scaled@colData))]
+annot_cols <- c(grep("^cgc_", names(ovary_rec2_tcga_scaled@colData)), grep("^gdc_", names(ovary_rec2_tcga_scaled@colData)))
+tcgacols <- names(ovary_rec2_tcga_scaled@colData)[annot_cols]
 tcga_sampleAnnot <- data.frame(ovary_rec2_tcga_scaled@colData[, tcgacols])
 
 
@@ -197,8 +198,7 @@ cat(paste0("... written ", outFile, "\n"))
 cat(paste0("****** DONE"))
 cat(paste0(startTime, " - ", Sys.time(),  "\n"))
 
-
-system.exit(0)
+stop(0)
 
 require(TCGAbiolinks)
 

@@ -1,12 +1,11 @@
 
-# Rscript phenopath_recount2_OV.R
+# Rscript phenopath_recount2_OV_pcaScaleFalse.R
 
 require(recount)
 require(TCGAbiolinks)
 require(biomaRt)
 require(phenopath)
 require(ggplot2)
-require(ggsci)
 
 pcaplot <- function(pca_dt, pctoplot, summ_dt,...) {
   stopifnot(length(pctoplot) == 2)
@@ -22,31 +21,8 @@ pcaplot <- function(pca_dt, pctoplot, summ_dt,...) {
   )
 }
 
-
-myG_theme <-   theme( 
-  plot.title = element_text(hjust = 0.5, face = "bold", size=16),
-  plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
-  panel.grid = element_blank(),
-  panel.grid.major.y = element_line(colour = "grey"),
-  panel.grid.minor.y = element_line(colour = "grey"),
-  axis.line.x= element_line(size = .2, color = "black"),
-  axis.line.y = element_line(size = .2, color = "black"),
-  axis.text.y = element_text(color="black", hjust=1,vjust = 0.5, size=12),
-  axis.text.x =element_text(color="black", hjust=0.5,vjust = 0.5, size=12, face="bold"),
-  # axis.ticks.x = element_blank(),
-  axis.title.y = element_text(color="black", size=14),
-  axis.title.x = element_text(color="black", size=14),
-  panel.border = element_blank(),
-  panel.background = element_rect(fill = "transparent"),
-  legend.background =  element_rect(),
-  legend.text = element_text(size=12),
-  legend.key = element_blank(),
-  legend.title = element_text(face="bold", size=12)
-)
-
-
-runPheno <- FALSE
-runNorm <- FALSE
+runPheno <- TRUE
+runNorm <- TRUE
 #recount
 # https://f1000research.com/articles/6-1558/v1
 # why not using gene symbols: https://www.biostars.org/p/352492/#352535
@@ -69,8 +45,6 @@ runNorm <- FALSE
 
 plotType <- "png"
 myHeight <- myWidth <- 400
-myHeightGG <- 6
-myWidthGG <- 6
 
 # filter to keep only the highly variable genes
 # Campbell 2018: 
@@ -85,7 +59,7 @@ inFolder <- file.path("..","tcga_data","DOWNLOAD_TCGA_GTEX_RECOUNT2")
 
 # setwd("~/Documents/FREITAS_LAB/ovarian_project/phenopath")
 
-outFolder <- "PHENOPATH_RECOUNT2_TCGA_OV"
+outFolder <- "PHENOPATH_RECOUNT2_TCGA_OV_PCASCALEFALSE"
 dir.create(outFolder, recursive=TRUE)
 
 # setwd("~/Documents/FREITAS_LAB/ovarian_project/phenopath")
@@ -137,10 +111,10 @@ nTCGA <- sum(grepl("^TCGA", colnames(ov_data_gcNorm_log)))
 ################################### 
 ov_data_notNorm_log <- log2(ov_data_forNorm + 1)
 
-ov_data_notNorm_log_no0 <- ov_data_notNorm_log[rowSums(ov_data_notNorm_log) > 0,]
+# ov_data_notNorm_log_no0 <- ov_data_notNorm_log[rowSums(ov_data_notNorm_log) > 0,]
+ov_data_notNorm_log_no0 <- ov_data_notNorm_log
 
-
-pca_ov <- prcomp(t(ov_data_notNorm_log_no0), scale=TRUE)
+pca_ov <- prcomp(t(ov_data_notNorm_log_no0), scale=FALSE)
 pca_ov_lowrepr <- pca_ov$x
 stopifnot(nrow(pca_ov_lowrepr) == nGTEX+nTCGA)
 
@@ -174,14 +148,14 @@ tcga_raw_data_log <- ov_data_notNorm_log[,grep("^TCGA", colnames(ov_data_notNorm
 stopifnot(ncol(gtex_raw_data_log) + ncol(tcga_raw_data_log) == ncol(ov_data_notNorm_log))
 
 ### FOR PCA -> I need to remove genes that sum to 0 otherwise cannot scale data
-gtex_raw_data_log <- gtex_raw_data_log[rowSums(gtex_raw_data_log) > 0,]
-tcga_raw_data_log <- tcga_raw_data_log[rowSums(tcga_raw_data_log) > 0,]
+# gtex_raw_data_log <- gtex_raw_data_log[rowSums(gtex_raw_data_log) > 0,]
+# tcga_raw_data_log <- tcga_raw_data_log[rowSums(tcga_raw_data_log) > 0,]
 
 
 # do I have batch effect within TCGA (plate)
 # The default is FALSE for consistency with S, but in general scaling is advisable
 # also scaled in https://kieranrcampbell.github.io/phenopath/phenopath_shalek_vignette.html
-tcga_pca_ov <- prcomp(t(tcga_raw_data_log), scale=TRUE)
+tcga_pca_ov <- prcomp(t(tcga_raw_data_log), scale=FALSE)
 tcga_pca_ov_lowrepr <- tcga_pca_ov$x
 stopifnot(nrow(tcga_pca_ov_lowrepr) == nTCGA)
 
@@ -215,7 +189,7 @@ cat(paste0("... written: ", outFile, "\n"))
 
 
 # do I have batch effect within gtex
-gtex_pca_ov <- prcomp(t(gtex_raw_data_log), scale=TRUE)
+gtex_pca_ov <- prcomp(t(gtex_raw_data_log), scale=FALSE)
 gtex_pca_ov_lowrepr <- gtex_pca_ov$x
 stopifnot(nrow(gtex_pca_ov_lowrepr) == nGTEX)
 
@@ -256,13 +230,13 @@ tcga_data_log <- ov_data_gcNorm_log[,grep("^TCGA", colnames(ov_data_gcNorm_log))
 stopifnot(ncol(gtex_data_log) + ncol(tcga_data_log) == ncol(ov_data_gcNorm_log))
 
 ### FOR PCA -> I need to remove genes that sum to 0 otherwise cannot scale data
-tcga_data_log <- tcga_data_log[rowSums(tcga_data_log) > 0,]
-gtex_data_log <- gtex_data_log[rowSums(gtex_data_log) > 0,]
+# tcga_data_log <- tcga_data_log[rowSums(tcga_data_log) > 0,]
+# gtex_data_log <- gtex_data_log[rowSums(gtex_data_log) > 0,]
 
 # do I have batch effect within TCGA (plate)
 # The default is FALSE for consistency with S, but in general scaling is advisable
 # also scaled in https://kieranrcampbell.github.io/phenopath/phenopath_shalek_vignette.html
-tcga_pca_ov <- prcomp(t(tcga_data_log), scale=TRUE)
+tcga_pca_ov <- prcomp(t(tcga_data_log), scale=FALSE)
 tcga_pca_ov_lowrepr <- tcga_pca_ov$x
 stopifnot(nrow(tcga_pca_ov_lowrepr) == nTCGA)
 
@@ -295,7 +269,7 @@ cat(paste0("... written: ", outFile, "\n"))
 
 
 # do I have batch effect within gtex
-gtex_pca_ov <- prcomp(t(gtex_data_log), scale=TRUE)
+gtex_pca_ov <- prcomp(t(gtex_data_log), scale=FALSE)
 gtex_pca_ov_lowrepr <- gtex_pca_ov$x
 stopifnot(nrow(gtex_pca_ov_lowrepr) == nGTEX)
 
@@ -339,11 +313,9 @@ stopifnot(ncol(gtex_data_log) == nGTEX)
 gtex_annot_dt <- gtex_annot_dt[gtex_annot_dt$sampid != pc2_outlier,]
 stopifnot(gtex_annot_dt$sampid == colnames(gtex_data_log))
 
-gtex_data_log <- gtex_data_log[rowSums(gtex_data_log) > 0,]
-
 ########################### REDO THE GTEX PCA WITHOUT THE OUTLIER
 # do I have batch effect within gtex
-gtex_pca_ov <- prcomp(t(gtex_data_log), scale=TRUE)
+gtex_pca_ov <- prcomp(t(gtex_data_log), scale=FALSE)
 gtex_pca_ov_lowrepr <- gtex_pca_ov$x
 stopifnot(nrow(gtex_pca_ov_lowrepr) == nGTEX)
 
@@ -477,7 +449,7 @@ cat(paste0("... written: ", outFile, "\n"))
 ##############################################################
 ############################################################## PCA on merged data
 ##############################################################
-# ov_data_filtered <- get(load("PHENOPATH_RECOUNT2_TCGA_OV/ov_data_filtered.Rdata"))
+
 
 # phenopath tuto: sim$y is the N×G matrix of gene expression (N=100 cells and G=40 genes)
 # so I have to take the transpose of my ov_data_log_matrix to have samples in line and genes in columns
@@ -485,13 +457,12 @@ ov_data_filteredT <- t(ov_data_filtered)
 stopifnot(nGenes == ncol(ov_data_filteredT))
 stopifnot(nGTEX+nTCGA == nrow(ov_data_filteredT))
 
-pca_ov <- prcomp(ov_data_filteredT, scale=TRUE)
+pca_ov <- prcomp(ov_data_filteredT, scale=FALSE)
 pca_ov_lowrepr <- pca_ov$x
 stopifnot(nrow(pca_ov_lowrepr) == nGTEX+nTCGA)
 
-pc1 <- pca_ov_lowrepr[,1]
 pc2 <- pca_ov_lowrepr[,2]
-pc3 <- pca_ov_lowrepr[,3]
+pc1 <- pca_ov_lowrepr[,1]
 
 outFile <- file.path(outFolder, paste0("in_data_pca_12_tcga_gtex.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
@@ -520,28 +491,14 @@ cat(paste0("... written: ", outFile, "\n"))
 ############################################################## LET'S DO PHENO
 ##############################################################
 
-### how to set the covar ?? explained here: https://kieranrcampbell.github.io/phenopath/phenopath_shalek_vignette.html
-# # 4.2 Inference with PhenoPath
-# First we must decide how to pass in the covariate information (ie the stimulant applied) to the software as the x
-# values. Here we will give cells exposed to LPS a value of 1 and cells exposed to PAM a value of -1.
-# This means the overall pathway loading λ is the average change for LPS and PAM cells, 
-# while if the β parameter is positive it means the gene is more upregulated over pseudotime under LPS and 
-# if β is negative it means the gene is more upregulated under PAM11 
-# Instead we could encode LPS to 1 and PAM to 0, in which case the pathway loading λ would be the change under PAM and λ+β
-# the change under LPS stimulation..
-
-# so here give a value of 1 in tumor and a value of -1 in normal
-# This means the overall pathway loading λ is the average change for normal and tumor
-# if β > 0 =>  the gene is more upregulated over pseudotime under tumor  
-# if β  < 0 =>   the gene is more upregulated under normal 
-
-
 # phenopath needs a cell-by-gene matrix = N×G matrix of gene expression (N=samples, G = genes)
 stopifnot(nrow(ov_data_filteredT) == nGTEX+nTCGA)
 stopifnot(ncol(ov_data_filteredT) == nGenes)
-mycovar <- 2 * grepl("^TCGA", rownames(ov_data_filteredT)) - 1
-stopifnot(sum(mycovar== -1) == nGTEX)
-stopifnot(sum(mycovar== 1) == nTCGA)
+mycovar <- as.numeric(grepl("^GTEX", rownames(ov_data_filteredT)))
+stopifnot(sum(mycovar) == nGTEX)
+mycovar[mycovar == 1] <- "GTEX"
+mycovar[mycovar == 0] <- "TCGA"
+mycovar <- factor(mycovar, levels=c("GTEX", "TCGA"))
 stopifnot(!is.na(mycovar))
 
 if(runPheno) {
@@ -555,207 +512,84 @@ if(runPheno) {
   outFile <- file.path(outFolder, paste0("ov_phenopath_fit.Rdata"))
   ov_phenopath_fit <- get(load(outFile))
 }
-#   ov_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_OV/ov_phenopath_fit.Rdata"))
+
+system.exit(0)
 
 
-######################################################## 
-##############  PHENOPATH RESULT ANLAYSIS
-######################################################## 
-
-####### check the model
 # it is important to check convergence with a call to plot_elbo(ov_phenopath_fit) to ensure the ELBO is approximately flat:
-
-outFile <- file.path(outFolder, paste0("phenopath_elbo_fit.", plotType))
-p <- plot_elbo(ov_phenopath_fit)
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
-cat(paste0("... written: ", outFile, "\n"))
-
   
-####### retrieve the pseudotimes
-# maximum a-posteriori (MAP) estimates of the pseudotimes using the trajectory()
-
-ov_pseudotimes <-  trajectory(ov_phenopath_fit)
- 
-############## correlation with PCs ##############
-### look if the pseudotimes correlate with the PCs
-# tumor=1, normal=-1
-
-# dev.off()
-add_corr <- function(x,y, legPos="topright") {
-  corval <- as.numeric(round(cor.test(x,y, method="spearman")$estimate, 3))
-  legend(legPos, legend=c("TCGA", "GTEX",
-    paste0("SCC = ", corval)),
-    pch=c(16, 16, -1),
-    col =c(1+3, -1+3, "black"), bty="n")
-}
-outFile <- file.path(outFolder, paste0("corr_pseudotimes_pc1.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-plot(x = pc1, 
-     y = ov_pseudotimes,
-     xlab = "PC1", ylab="PP Pseudotimes z",
-     col = mycovar+3,
-     pch=16, cex=0.7,
-     cex.lab = 1.2, cex.axis=1.2)
-add_corr(pc1, ov_pseudotimes)
-foo <- dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-outFile <- file.path(outFolder, paste0("corr_pseudotimes_pc2.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-plot(x = pc2, 
-     y = ov_pseudotimes,
-     xlab = "PC2", ylab="PP Pseudotimes z",
-     col = mycovar+3,
-     pch=16, cex=0.7,
-     cex.lab = 1.2, cex.axis=1.2)
-add_corr(pc2, ov_pseudotimes)
-foo <- dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-outFile <- file.path(outFolder, paste0("corr_pseudotimes_pc3.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-plot(x = pc3, 
-     y = ov_pseudotimes,
-     xlab = "PC3", ylab="PP Pseudotimes z",
-     col = mycovar+3,
-     pch=16, cex=0.7,
-     cex.lab = 1.2, cex.axis=1.2)
-add_corr(pc3, ov_pseudotimes)
-foo <- dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-############## LOOK A BIT AT THE BETA VALUES ##############
-# density of the beta with color code signifcance
-
-gene_names <- colnames(ov_data_filteredT)
-
-df_beta <- data.frame(beta = interaction_effects(ov_phenopath_fit),
-                      beta_sd = interaction_sds(ov_phenopath_fit),
-                      is_sig = significant_interactions(ov_phenopath_fit),
-                      gene = gene_names)
-
-outFile <- file.path(outFolder, paste0("beta_values_distribution.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-plot(density(df_beta$beta))
-lines(density(df_beta$beta[df_beta$is_sig]), col=2)
-# lines(density(df_beta$beta[!df_beta$is_sig]), col=3)
-legend("topright", legend=c("all dist.", "only signif. dist."), col=c(1,2), bty="n")
-mtext(side=3, text=paste0("# signif: ", sum(df_beta$is_sig), "/", nrow(df_beta)))
-foo <- dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-
-############## top significant interactions pseudotime x covar ##############
-
-# look at the top bottom and up interaction effects
-nTop <- 10
+  plot_elbo(ov_phenopath_fit)
   
-# show the top genes with signif interactions
-df_beta <- df_beta[order(df_beta$beta, decreasing = TRUE),]
-topPosGenes <- df_beta[1:nTop,]
-topPosGenes$dir <- "pos"
-df_beta <- df_beta[order(df_beta$beta, decreasing = FALSE),]
-topNegGenes <- df_beta[1:nTop,]
-topNegGenes$dir <- "neg"
-
-dfBeta_topGenes <- rbind(topPosGenes, topNegGenes)
-stopifnot(!duplicated(dfBeta_topGenes$gene))
-dfBeta_topGenes$gene <- as.character(dfBeta_topGenes$gene)
-
-gene_lab_dt <- get(load(file.path(inFolder, "out_intersect_dt.RData")))
-gene_lab_dt$geneID_short <-gsub("\\..*", "",gene_lab_dt$geneID)
-gene_lab_dt <- unique(gene_lab_dt[,c("geneSymb", "geneID_short")])
-stopifnot(!duplicated(gene_lab_dt$geneID_short))
-ens2genes <- setNames(gene_lab_dt$geneSymb, gene_lab_dt$geneID_short)
-stopifnot(dfBeta_topGenes$gene %in% gene_lab_dt$geneID_short)
-stopifnot(dfBeta_topGenes$gene %in% names(ens2genes))
-dfBeta_topGenes$geneSymb <- ens2genes[dfBeta_topGenes$gene]
-stopifnot(!duplicated(dfBeta_topGenes$geneSymb))
-dfBeta_topGenes$geneSymb <- factor(dfBeta_topGenes$geneSymb, levels=dfBeta_topGenes$geneSymb)
-dfBeta_topGenes$dir <- factor(dfBeta_topGenes$dir, levels=c("pos", "neg"))
+  dev.off()
+  qplot(pc1, trajectory(ov_phenopath_fit)) +
+    xlab("pc1") + ylab("Phenopath z")
   
-p <-  ggplot(dfBeta_topGenes, aes(x = geneSymb, y = beta, color = is_sig)) + 
+  dev.off()
+  qplot(pc2, trajectory(ov_phenopath_fit)) +
+    xlab("pc2") + ylab("Phenopath z")
+  
+
+  gene_names <- colnames(ov_data_filteredT)
+  
+  df_beta <- data.frame(beta = interaction_effects(ov_phenopath_fit),
+                        beta_sd = interaction_sds(ov_phenopath_fit),
+                        is_sig = significant_interactions(ov_phenopath_fit),
+                        gene = gene_names)
+  
+  # from 
+  df_beta$gene <- fct_relevel(df_beta$gene, gene_names)
+  
+  ggplot(df_beta, aes(x = gene, y = beta, color = is_sig)) + 
     geom_point() +
-    facet_wrap(. ~ dir ,scales="free") +
-    ggtitle(paste0("Genes with top beta"), subtitle=paste0("(", nTop, " lowest and hightest)"))+
     geom_errorbar(aes(ymin = beta - 2 * beta_sd, ymax = beta + 2 * beta_sd)) +
-    theme(plot.title = element_text(hjust=0.5),
-          plot.subtitle = element_text(hjust=0.5),
-          axis.text.x = element_text(angle = 90, hjust = 1),
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
           axis.title.x = element_blank()) +
     ylab(expression(beta)) +
     scale_color_brewer(palette = "Set2", name = "Significant")
   
-outFile <- file.path(outFolder, paste0("genes_with_top_and_bottom_n", nTop, "_beta.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
-cat(paste0("... written: ", outFile, "\n"))
+  
+  which_largest <- which.max(df_beta$beta)
+  
+  df_large <- data.frame(
+    y = ov_data_filteredT[, which_largest],
+    x = mycovar,
+    z = trajectory(ov_phenopath_fit)
+  )
+  dev.off()
+  
+  ggplot(df_large, aes(x = z, y = y, color = x)) +
+    geom_point() +
+    scale_color_brewer(palette = "Set1") +
+    stat_smooth()
   
   
-############## top significant interactions pseudotime x covar ##############
-# which gene has highest interaction effect ?
-
-stopifnot(df_beta$gene %in% names(ens2genes))
-stopifnot(!duplicated(df_beta$gene))
-# if duplicated I would need to do some manual curation...
-df_beta$geneSymb <- ens2genes[df_beta$gene]
-
-which_largest <- which.max(df_beta$beta)
-beta_topGene <- df_beta$geneSymb[which_largest]
-
-df_large <- data.frame(
-  y = ov_data_filteredT[, which_largest],
-  x = mycovar,
-  z = ov_pseudotimes
-)
-
-#dev.off()
-df_large$covar_lab <- ifelse(mycovar == 1, "TCGA", "GTEX")
-
-p <- ggplot(df_large, aes(x = z, y = y, color = covar_lab))+
-  geom_point() +
-  ylab("Expression (GCnorm + log2(.+1))") +
-  xlab("PP Pseudotimes")+
-  ggtitle(paste0("",beta_topGene ), subtitle=paste0("highest beta (", round(df_beta$beta[which_largest], 3), ")"))+
-  labs(color="")+
-  scale_color_brewer(palette = "Set1") +
-  stat_smooth()+
-  theme(plot.title = element_text(hjust=0.5),
-        plot.subtitle = element_text(hjust=0.5))
+gene_lab_dt <- get(load(file.path(inFolder, "out_intersect_dt.RData")))
+save(out_intersect_dt, file=outFile)
+cat(paste0("... written ", outFile, "\n"))
 
 
-# the same for the lowest interaction effect ?
+gene_lab_dt$geneID_short <-gsub("\\..*", "",gene_lab_dt$geneID)
+
   
-which_lowest <- which.min(df_beta$beta)
-beta_topGene <- df_beta$geneSymb[which_lowest]
+stopifnot(colnames(ov_data_filteredT))
+stopifnot(colnames(ov_data_filteredT) %in% gene_lab_dt$geneID_short)  
 
-df_large <- data.frame(
-  y = ov_data_filteredT[, which_lowest],
-  x = mycovar,
-  z = ov_pseudotimes
-)
+unique(sapply(colnames(ov_data_filteredT), function(x) sum(x %in% gene_lab_dt$geneID_short)))
+# [1] 1   # there is no ambiguity in gene name
+sub_gene_lab_dt <- gene_lab_dt[gene_lab_dt$geneID_short %in% colnames(ov_data_filteredT), ]
+sub_gene_lab_dt$mapping_source <- NULL
+sub_gene_lab_dt <- unique(sub_gene_lab_dt)
+any(duplicated(sub_gene_lab_dt$geneID_short))
+any(duplicated(sub_gene_lab_dt$geneSymb))
 
-#dev.off()
-df_large$covar_lab <- ifelse(mycovar == 1, "TCGA", "GTEX")
+sub_gene_lab_dt[sub_gene_lab_dt$geneID_short == df_beta$gene[which_largest],]
+# PLXNC1 -> tumor suppressor gene !
 
-p <- ggplot(df_large, aes(x = z, y = y, color = covar_lab))+
-  geom_point() +
-  ylab("Expression (GCnorm + log2(.+1))") +
-  xlab("PP Pseudotimes")+
-  ggtitle(paste0("",beta_topGene ), subtitle=paste0("highest beta (", round(df_beta$beta[which_lowest], 3), ")"))+
-  labs(color="")+
-  scale_color_brewer(palette = "Set1") +
-  stat_smooth()+
-  theme(plot.title = element_text(hjust=0.5),
-        plot.subtitle = element_text(hjust=0.5))
-
-
-
-############## look trajectory and phenotypes (tumor stages, age, etc.) ##############
 
 stopifnot(rownames(ov_data_filteredT) == c(gtex_annot_dt$sampid, tcga_annot_dt$cgc_sample_id))
 
 
-all_traj <- setNames(ov_pseudotimes, rownames(ov_data_filteredT))
+all_traj <- setNames(trajectory(ov_phenopath_fit), rownames(ov_data_filteredT))
 stopifnot(names(all_traj) == c(gtex_annot_dt$sampid, tcga_annot_dt$cgc_sample_id))
 
 stg_ords <-c(  "Stage IC", "Stage IIA" ,"Stage IIB" , "Stage IIC","Stage IIIA", "Stage IIIB","Stage IIIC",   "Stage IV")
@@ -773,22 +607,8 @@ stopifnot(!is.na(tcga_traj_dt))
 tcga_traj_dt$tcga_stage <- factor(tcga_traj_dt$tcga_stage, levels=stg_ords)
 stopifnot(!is.na(tcga_traj_dt$tcga_stage))
 
-p <- ggplot(tcga_traj_dt, aes(x= tcga_stage, y= pseudotime) )+
-  geom_boxplot(notch = F, outlier.shape=NA)+
-  geom_jitter(aes(col=tcga_stage),alpha=0.7,position=position_jitterdodge())+
-  ggtitle(paste0("Pseudotime by tumor stage"), subtitle = paste0("(TCGA data)"))+
-  scale_color_nejm()+
-  ylab("PP Pseudotimes")+
-  xlab("TCGA HGSC tumor stage")+
-  myG_theme +
-  labs(color="")+
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x = element_blank() )
-  
-
-outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_tumor_stage_TCGA.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
-cat(paste0("... written: ", outFile, "\n"))
+ggplot(tcga_traj_dt, aes(x= tcga_stage, y= pseudotime) )+
+  geom_boxplot()
 
 
 
@@ -807,33 +627,8 @@ stopifnot(!is.na(gtex_traj_dt))
 gtex_traj_dt$gtex_age <- factor(gtex_traj_dt$gtex_age, levels=age_ords)
 stopifnot(!is.na(gtex_traj_dt$gtex_age))
 
-
-p <- ggplot(gtex_traj_dt, aes(x= gtex_age, y= pseudotime) )+
-  geom_boxplot(notch = F, outlier.shape=NA)+
-  geom_jitter(aes(col=tcga_stage),alpha=0.7,position=position_jitterdodge())+
-  ggtitle(paste0("Pseudotime by age"), subtitle = paste0("(GTEX data)"))+
-  scale_color_nejm()+
-  ylab("PP Pseudotimes")+
-  xlab("GTEX donnor stage")+
-  myG_theme +
-  labs(color="")+
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x = element_blank() )
-
-
-outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_age_GTEX.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
-cat(paste0("... written: ", outFile, "\n"))
-
-
-1 # get indexed clinical patient data for GBM samples
-ov_clin <- GDCquery_clinic(project = "TCGA-OV", type = "Clinical")
-
-# check: figo_stage
-# primary_diagnosis
-# age_at_index
-############## gene set enrichment on top and bottom beta value genes ##############
-
+ggplot(gtex_traj_dt, aes(x= gtex_age, y= pseudotime) )+
+  geom_boxplot()
 
 
 
@@ -905,7 +700,7 @@ tcga_data_log_norm <- apply(tcga_data_log, 2, function(x) (x- min(x)) / (max(x)-
 gtex_data_log_norm <- apply(gtex_data_log, 2, function(x) (x- min(x)) / (max(x)-min(x)))
 
 ov_data_log_norm <- cbind(tcga_data_log_norm, gtex_data_log_norm)
-pca_ov_norm <- prcomp(t(ov_data_log_norm), scale=TRUE)
+pca_ov_norm <- prcomp(t(ov_data_log_norm), scale=FALSE)
 pca_ov_norm_lowrepr <- pca_ov_norm$x
 stopifnot(nrow(pca_ov_norm_lowrepr) == nGTEX+nTCGA)
 
@@ -918,23 +713,5 @@ plot(x = pca_ov_norm_lowrepr[,1],
      col=1+as.numeric(grepl("TCGA", rownames(pca_ov_norm_lowrepr))))
 mtext(text=paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA), side=3)
 legend("topleft", legend=c("GTEX", "TCGA"), pch=16, col=c(1,2), bty="n")
-
-
-
-stopifnot(colnames(ov_data_filteredT) %in% gene_lab_dt$geneID_short)  
-
-unique(sapply(colnames(ov_data_filteredT), function(x) sum(x %in% gene_lab_dt$geneID_short)))
-# [1] 1   # there is no ambiguity in gene name
-sub_gene_lab_dt <- gene_lab_dt[gene_lab_dt$geneID_short %in% colnames(ov_data_filteredT), ]
-sub_gene_lab_dt$mapping_source <- NULL
-sub_gene_lab_dt <- unique(sub_gene_lab_dt)
-any(duplicated(sub_gene_lab_dt$geneID_short))
-any(duplicated(sub_gene_lab_dt$geneSymb))
-
-sub_gene_lab_dt[sub_gene_lab_dt$geneID_short == df_beta$gene[which_largest],]
-# PLXNC1 -> tumor suppressor gene !
-
-
-
 
 

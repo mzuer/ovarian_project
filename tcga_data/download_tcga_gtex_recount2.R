@@ -198,8 +198,11 @@ cat(paste0("... written ", outFile, "\n"))
 cat(paste0("****** DONE"))
 cat(paste0(startTime, " - ", Sys.time(),  "\n"))
 
-stop(0)
+stop("---ok\n")
 
+####################################################################################################
+### THRASH
+####################################################################################################
 require(TCGAbiolinks)
 
 #the following lines are only to query the TCGA data 

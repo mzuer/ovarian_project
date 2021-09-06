@@ -8,6 +8,32 @@ require(phenopath)
 require(ggplot2)
 require(ggrepel)
 require(ggsci)
+require(viridis)
+require(dplyr)
+require(goseq)
+genome <- "hg19"
+id <- "ensGene"
+go_cat <- "GO:BP"
+plotNgos <- 10
+topCorrThresh <- 0.5  # 0.5 in Campbell and Yau 2018; to select most corr. for GO enrichment
+topBetaThresh <- 0.5  # 0.5 in Campbell and Yau 2018; to select highest beta for GO enrichment
+
+library("limma")
+library("edgeR")
+meanExprThresh_limma <- 0.5
+
+
+parse_go <- function(go, type, n_tested, plotntop=12) {
+  go <- go %>% 
+    mutate(qval = p.adjust(over_represented_pvalue)) %>% 
+    mutate(log10qval = -log10(qval),
+           prop_in_cat = numInCat / n_tested) %>% 
+    head(n = plotntop) %>% 
+    mutate(type = type) %>% 
+    tbl_df() %>% 
+    arrange(desc(log10qval))
+  go
+}
 
 pcaplot <- function(pca_dt, pctoplot, summ_dt,...) {
   stopifnot(length(pctoplot) == 2)
@@ -22,6 +48,60 @@ pcaplot <- function(pca_dt, pctoplot, summ_dt,...) {
        ...
   )
 }
+
+pcaplot_gg <- function(pca_dt, pctoplot, summ_dt,colvect, collab="pseudotime") {
+  stopifnot(length(pctoplot) == 2)
+  # colnames(pca_dt) <- paste0("col", 1:ncol(pca_dt))
+  pca_dt$colvect <- colvect
+  var1 <- round(100*summ_dt$importance["Proportion of Variance", paste0("PC", pctoplot[1])], 2)
+  var2 <- round(100*summ_dt$importance["Proportion of Variance", paste0("PC", pctoplot[2])], 2)
+  p <- ggplot(pca_dt, aes_string(x = paste0("PC", pctoplot[1]),
+                            y = paste0("PC", pctoplot[2]),
+                            col = paste0("colvect")))+
+    xlab(paste0("PC", pctoplot[1], " (", var1, " % variance explained)"))+
+  ylab(paste0("PC", pctoplot[2], " (", var2, " % variance explained)"))+
+    geom_point() +
+    ggtitle(paste0(""), subtitle=paste0(""))+
+    labs(color=paste0(collab))+
+    scale_color_viridis() +
+    theme(plot.title = element_text(hjust=0.5),
+          plot.subtitle = element_text(hjust=0.5))
+  
+       return(p)
+}
+# pcaplot_gg(pca_dt=data.frame(pca_ov_lowrepr), pctoplot=c(2,3), summ_dt=summary(pca_ov),colvect=ov_pseudotimes)
+
+
+pcaplot_gg2 <- function(pca_dt, pctoplot, summ_dt,colvect, condvect, mytit="", mysubtit="", collab="pseudotime") {
+  stopifnot(length(pctoplot) == 2)
+  # colnames(pca_dt) <- paste0("col", 1:ncol(pca_dt))
+  pca_dt$colvect <- colvect
+  pca_dt_nocond <- pca_dt
+  pca_dt$condvect <- condvect
+  var1 <- round(100*summ_dt$importance["Proportion of Variance", paste0("PC", pctoplot[1])], 2)
+  var2 <- round(100*summ_dt$importance["Proportion of Variance", paste0("PC", pctoplot[2])], 2)
+  p <- ggplot(pca_dt, aes_string(x = paste0("PC", pctoplot[1]),
+                                 y = paste0("PC", pctoplot[2])))+
+    geom_point(data = pca_dt_nocond, fill = "grey80", color = "grey80", size = 3) +
+    geom_point(aes(fill = colvect), shape = 21, color = 'grey20', size = 3) +
+    scale_fill_viridis(name = "Pseudotime", option = "C") + 
+    xlab(paste0("PC", pctoplot[1], " (", var1, " % variance explained)"))+
+    ylab(paste0("PC", pctoplot[2], " (", var2, " % variance explained)"))+
+    ggtitle(paste0(mytit), subtitle=paste0(mysubtit))+
+    labs(color=paste0(collab))+
+    facet_wrap(~ condvect) +
+    theme(legend.position = c(.4,.08),
+          legend.direction = "horizontal") +
+    theme(strip.background = element_rect(fill = "grey95", color = "grey30", size = 1),
+          legend.text = element_text(size = 8),
+          plot.title = element_text(hjust=0.5),
+          plot.subtitle = element_text(hjust=0.5),
+          axis.text = element_text(size = 9),
+          axis.title = element_text(size = 10),
+          legend.title = element_text(size = 10))
+  return(p)
+}
+
 
 
 myG_theme <-   theme( 
@@ -73,8 +153,8 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-runPheno <- FALSE
-runNorm <- FALSE
+runPheno <- TRUE
+runNorm <- TRUE
 #recount
 # https://f1000research.com/articles/6-1558/v1
 # why not using gene symbols: https://www.biostars.org/p/352492/#352535
@@ -129,7 +209,14 @@ gtex_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_GTEX_RECOUNT2/gtex_sampleA
 tcga_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_GTEX_RECOUNT2/tcga_sampleAnnot.Rdata"))
 
 # 1- gc content normalization
-stopifnot(!duplicated(rownames(gsub("\\..*", "",rownames(ov_data_raw)))))
+# xx=rownames(ov_data_raw)
+# xx=xx[!grepl("_PAR_Y$", xx)]
+# stopifnot(!duplicated(gsub("\\..*", "",xx)))
+## I have some weird ENSGxx_PAR_Y genes -> remove them
+tokeep <- ! grepl("_PAR_Y$", rownames(ov_data_raw))
+cat(paste0("... remove weird genes: ", sum(!tokeep), "/", length(tokeep), "\n"))
+ov_data_raw <- ov_data_raw[tokeep,]
+stopifnot(!duplicated(gsub("\\..*", "",rownames(ov_data_raw))))
 rownames(ov_data_raw)<-gsub("\\..*", "",rownames(ov_data_raw))
 # get list of all protein-coding genes
 mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
@@ -1095,7 +1182,26 @@ cat(paste0("... written: ", outFile, "\n"))
 
 ############## PC dots with color-coded by pseudotime gradient ##############
 
+p <- pcaplot_gg2(pca_dt=data.frame(pca_ov_lowrepr), pctoplot=c(2,3), summ_dt=summary(pca_ov),
+            condvect = gsub("(^.+?)-.+", "\\1", rownames(pca_ov_lowrepr)),
+            colvect=ov_pseudotimes,
+            mytit = paste0("TCGA+GTEX OV notNorm (log2(.+1))"),
+            mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
 
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_tcga_gtex.", plotType))
+ggsave(p, filename = outFile, height=myHeight, width=myWidth*1.2)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+p <- pcaplot_gg2(pca_dt=data.frame(pca_ov_lowrepr), pctoplot=c(1,2), summ_dt=summary(pca_ov),
+            condvect = gsub("(^.+?)-.+", "\\1", rownames(pca_ov_lowrepr)),
+            colvect=ov_pseudotimes,
+            mytit = paste0("TCGA+GTEX OV notNorm (log2(.+1))"),
+            mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
+
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_tcga_gtex.", plotType))
+ggsave(p, filename = outFile, height=myHeight, width=myWidth*1.2)
+cat(paste0("... written: ", outFile, "\n"))
 
 ############## gene set enrichment on top and bottom beta value genes ##############
 
@@ -1115,20 +1221,210 @@ cat(paste0("... written: ", outFile, "\n"))
 # the highest/lowest betas => this would give the ones with highest interaction effects up/down regulated normal/tumor
 # the highest/lowest lambda => the one most up/down regulated across pseudotimes
 
-############## gene set enrichment on top and bottom beta value genes ##############
+
+# What is pseudotime?  - GO association
+# from: https://github.com/kieranrcampbell/phenopath_analyses/blob/master/analysis/BRCA/clvm_analysis_er_pos.Rmd
+
+
+pp_input_data <- ov_data_filteredT
+
+all_genes <- colnames(pp_input_data) # ensemblID
+corr_expr_pt <- apply(pp_input_data, 2, cor, ov_pseudotimes)
+cdf <- data.frame(feature = all_genes, 
+                  correlation = corr_expr_pt)
+stopifnot(!is.na(cdf))
+
+stopifnot(topCorrThresh >= 0)
+upreg_genes <- cdf$feature[cdf$correlation > topCorrThresh]
+downreg_genes <- cdf$feature[cdf$correlation < -topCorrThresh]
+upg <- 1 * (all_genes %in% upreg_genes)
+downg <- 1 * (all_genes %in% downreg_genes)
+names(upg) <- names(downg) <- all_genes
+pwfup <- nullp(upg, genome, id) # nullp = Probability Weighting Function from goseq
+goup <- goseq(pwfup, genome, id, test.cats = go_cat)
+pwfdown <- nullp(downg, genome, id)
+godown <- goseq(pwfdown, genome, id, test.cats = go_cat)
+
+
+corrExpr_gos <- rbind(
+  parse_go(goup, "Up-regulated", length(upreg_genes), plotntop=plotNgos),
+  parse_go(godown, "Down-regulated", length(downreg_genes), plotntop=plotNgos)
+)
+
+corrExpr_gos$term <- factor(corrExpr_gos$term, levels = corrExpr_gos$term[order(corrExpr_gos$log10qval)])
+
+p <- ggplot(corrExpr_gos, aes(x = term, y = log10qval)) +
+  geom_point() +
+  ggtitle(paste0("GO enrichment - top ", plotNgos), subtitle = paste0("abs. corr. with Pseudotime > ", topCorrThresh, ")"))+
+  facet_wrap(~ type, scales = "free", nrow = 2) +
+  coord_flip() +
+  theme(axis.title.y = element_blank(), legend.position = "none") +
+  ylab(expression(paste("-", log[10], " q-value"))) +
+  theme(
+    plot.title = element_text(hjust=0.5),
+    plot.subtitle = element_text(hjust=0.5),
+    legend.position = c(0, 0), legend.direction = "horizontal",
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 10),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10)) 
+
+
+  
+### Do the same for top beta:
+
+stopifnot(topBetaThresh >= 0)
+
+df_beta$ensembl_gene_id <- df_beta$gene
+upreg_genes <- df_beta$ensembl_gene_id[df_beta$beta > topBetaThresh & df_beta$is_sig]
+downreg_genes <- df_beta$ensembl_gene_id[df_beta$beta < -topBetaThresh & df_beta$is_sig]
+
+upg <- 1 * (all_genes %in% upreg_genes)
+downg <- 1 * (all_genes %in% downreg_genes)
+names(upg) <- names(downg) <- all_genes
+pwfup <- nullp(upg, genome, id)
+goup <- goseq(pwfup, genome, id, test.cats = go_cat)
+pwfdown <- nullp(downg, genome, id)
+godown <- goseq(pwfdown, genome, id, test.cats = go_cat)
+
+betacorr_gos <- rbind(
+  parse_go(goup, "Up-regulated", length(upreg_genes), 10),
+  parse_go(godown, "Down-regulated", length(downreg_genes), 10)
+)
+
+
+betacorr_gos$term <- factor(betacorr_gos$term, levels = betacorr_gos$term[order(betacorr_gos$log10qval)])
+ggplot(betacorr_gos, aes(x = term, y = log10qval, color = type)) +
+  geom_point() +
+  facet_wrap(~ type, scales = "free", nrow = 2) +
+  coord_flip() +
+  theme(axis.title.y = element_blank(), legend.position = "none") +
+  scale_color_brewer(palette = "Set1") +
+  ylab(expression(paste(log[10], " q-value"))) +
+  theme(axis.text = element_text(size = 10),
+        axis.title.x = element_text(size = 11))
+
+# for reactome pathway analysis
+# https://github.com/kieranrcampbell/phenopath_revisions/blob/master/analysis/brca_reanalysis/clvm_analysis.Rmd
+
+############## complementary info to std gene DE ##############
 
 # look at genes that are differentially expressed (large difference of gene expression normal vs. tumor)
 # and that have different trajectories (high interaction effects)
 # Whilst many of these 92 genes are differentially expressed between MSI groups, including MLH2 and TGFBR2 (Fig. 5c), 
 # PhenoPath is able to resolve the dynamic contribution to these expression differences
 
-# maybe:
+
+# see e.g. http://research.libd.org/recountWorkflow/articles/recount-workflow.html
+# ov_data_raw comes from here:
+# ovary_gtex <- scale_counts(TCGAquery_recount2(project="gtex", tissue = "ovary")$gtex_ovary)
+# ovary_tcga <- scale_counts(TCGAquery_recount2(project="tcga", tissue = "ovary")$tcga_ovary)
+# # I skip some steps of processing, but I have in the end 
+# # gene x sample matrix with GTEX samples starting with GTEX- and TCGA samples with TCGA-
+# ovary_all_data <- cbind(assays(ovary_gtex)$counts, assays(ovary_tcga)$counts)
+
+ov_data_raw <- get(load(file.path(inFolder, paste0("all_counts_onlyPF_", purityFilter, ".Rdata"))))
+
+# filter because I have removed the outlier !
+stopifnot(tcga_annot_dt$cgc_sample_id %in% colnames(ov_data_raw))
+stopifnot(gtex_annot_dt$sampid %in% colnames(ov_data_raw))
+stopifnot(!duplicated(tcga_annot_dt$cgc_sample_id))
+stopifnot(!duplicated(gtex_annot_dt$sampid))
+ov_data_raw <- ov_data_raw[, c(gtex_annot_dt$sampid, tcga_annot_dt$cgc_sample_id) ]
+
+# remove the weird gene
+tokeep <- ! grepl("_PAR_Y$", rownames(ov_data_raw))
+cat(paste0("... remove weird genes: ", sum(!tokeep), "/", length(tokeep), "\n"))
+ov_data_raw <- ov_data_raw[tokeep,]
+stopifnot(!duplicated(gsub("\\..*", "",rownames(ov_data_raw))))
+
+
+## Extract counts and filter out lowly expressed geens
+
+to_keep <- rowMeans(ov_data_raw) > meanExprThresh_limma
+cat(paste0("... keep sufficient expr: ", sum(to_keep), "/", length(tokeep), "\n"))
+
+
+## Build DGEList object
+dge <- DGEList(counts = ov_data_raw[to_keep, ])
+## Calculate normalization factors
+dge <- calcNormFactors(dge)
+# plotMDS(dge)
+samples_groups <- c(rep("normal", nrow(gtex_annot_dt)), rep("tumor", nrow(tcga_annot_dt)))
+my_group_design <- factor(samples_groups, levels = c("normal", "tumor"))
+my_design <- model.matrix( ~ my_group_design)
+## Run voom
+v <- voom(dge, my_design, plot = TRUE)
+## Run remaining parts of the DE analysis
+fit <- lmFit(v, my_design)
+efit <- eBayes(fit)
+
+## Visually explore DE results
+# limma::plotMA(efit)
+# limma::volcanoplot(efit)
+
+DE_topTable <- topTable(efit, coef=ncol(v$design), number=Inf, sort.by="p") ## if not 0+ in design -> coef=2
+
+
+stopifnot(!duplicated(rownames(gsub("\\..*", "",rownames(ov_data_raw)))))
+
+DE_topTable$ensemblID <- gsub("\\..*", "",rownames(DE_topTable))
+stopifnot(!duplicated(DE_topTable$ensemblID))
+
+## look for genes that has high logFC + has high beta value
+
+nTopDEvalueThresh <- 800
+topDEvalueThresh <- sort(abs(DE_topTable$logFC), decreasing = TRUE)[nTopDEvalueThresh]
+topDEvalueThresh
+
+topLogFC_genes <- DE_topTable$ensemblID[abs(DE_topTable$logFC) >= topDEvalueThresh]
+
+nTopBetaValueThresh <- 800
+topBetaValueThresh <- sort(abs(df_beta$beta), decreasing = TRUE)[nTopBetaValueThresh]
+topBetaValueThresh
+topBeta_genes <- df_beta$gene[abs(df_beta$beta) >= topBetaValueThresh]
+
+intersect(topLogFC_genes, topBeta_genes)
+
+# not convincing -> up to 500, no intersect
+
 ############## gene limma voom pvalue vs. phenopath beta value  ##############
+
+df_beta$ensemblID <- df_beta$gene
+
+merged_dt <- merge(df_beta, DE_topTable, by="ensemblID", all.x = TRUE, all.y=FALSE)
+stopifnot(!is.na(merged_dt))
+
+outFile <- file.path(outFolder, paste0("limma_adjPval_vs_phenopath_beta.", plotType))
+do.call(plotType, list(outFile, height=myHeight, width=myWidth))
+plot(
+  y=-log10(merged_dt$adj.P.Val),
+  x=df_beta$beta,
+  pch=16,
+  col=2+2*merged_dt$is_sig,
+  cex.lab=1.2,
+  cex.axis=1.2,
+  ylab="limm adj Pval [-log10]",
+  xlab=paste0("Phenopath ", betaU)
+)
+legend("topright", legend=c("signif.", "not signif."),
+       pch=16,bty="n",
+       col = c(2+2*c(TRUE, FALSE)))
+
+foo <- dev.off()
+cat(paste0("... written: ", outFile, "\n"))
+
 
 ##################################################
 cat(paste0("****** DONE"))
 cat(paste0(startTime, " - ", Sys.time(),  "\n"))
 stop("--ok\n")
+
+####################################################################################################
+### THRASH
+####################################################################################################
+
+
 # TCGA annot of interest
 
 # [1] "cgc_file_platform"
@@ -1266,4 +1562,102 @@ p <- ggplot(df_large, aes(x = z, y = y, color = covar_lab))+
   stat_smooth()+
   theme(plot.title = element_text(hjust=0.5),
         plot.subtitle = element_text(hjust=0.5))
+
+
+df_curve <- frame_data(
+  ~ ER_status, ~ x, ~ xend, ~ y, ~ yend, ~ curvature,
+  "ER-positive", -50, 20, 27, 40, 0.1,
+  "ER-negative", 55, 60, -35, 40, -0.1
+)
+geom_curve(aes(x = x, y = y, xend = xend, yend = yend),
+           data = filter(df_curve, ER_status == "ER-negative"), color = 'black',
+           curvature = df_curve$curvature[2], arrow = arrow(length = unit(0.3, "cm"), type = "open"), 
+           size = 1.5) +
+  
+  
+df_curve$ER_status <- factor(df_curve$ER_status, levels = df_curve$ER_status)
+plt <- filter(df_pca, ER_status != "indeterminate") %>% 
+  ggplot(aes(x = PC2, y = PC3)) +
+  geom_point(data = df_no_er, fill = "grey80", color = "grey80", size = 3) +
+  geom_point(aes(fill = pseudotime), shape = 21, color = 'grey20', size = 3) +
+  scale_fill_viridis(name = "Pseudotime", option = "C") + 
+  facet_wrap(~ ER_status) +
+  theme(legend.position = c(.4,.08),
+        legend.direction = "horizontal") +
+  geom_curve(aes(x = x, y = y, xend = xend, yend = yend),
+             data = filter(df_curve, ER_status == "ER-negative"), color = 'black',
+             curvature = df_curve$curvature[2], arrow = arrow(length = unit(0.3, "cm"), type = "open"), 
+             size = 1.5) +
+  geom_curve(aes(x = x, y = y, xend = xend, yend = yend),
+             data = filter(df_curve, ER_status == "ER-positive"), color = 'black',
+             curvature = df_curve$curvature[1], arrow = arrow(length = unit(0.3, "cm"), type = "open"), 
+             size = 1.5) +
+  theme(strip.background = element_rect(fill = "grey95", color = "grey30", size = 1),
+        legend.text = element_text(size = 8),
+        axis.text = element_text(size = 9),
+        axis.title = element_text(size = 10),
+        legend.title = element_text(size = 10)) +
+  xlim(-72, 83) + ylim(-50, 50)
+```
+
+
+
+Time for some reactome fun:
+  
+  ```{r reactome-time}
+pathways <- c("1643713", "1226099",
+              "2219528", "2644603",
+              "3304351", "4791275")
+id_to_name <- as.list(reactomePATHID2NAME)
+pathway_names <- id_to_name[pathways]
+pathways_to_genes <- as.list(reactomePATHID2EXTID)
+gene_list <- pathways_to_genes[pathways]
+pathway_names <- sapply(pathway_names, function(pn) {
+  gsub("Homo sapiens: ", "", pn)
+})
+names(gene_list) <- pathway_names
+mart <- useMart("ensembl", "hsapiens_gene_ensembl")
+to_ensembl <- function(gl) {
+  bm <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
+              filters = c("entrezgene"),
+              values = as.numeric(gl),
+              mart = mart)
+  return(bm$ensembl_gene_id)
+}
+gene_list_ensembl <- lapply(gene_list, to_ensembl)
+```
+
+And graph the results for various metrics:
+  
+  ```{r graph-for-metrics, eval = FALSE}
+sce <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
+all_genes <- unique(unlist(gene_list_ensembl))
+all_genes <- all_genes[all_genes %in% fData(sce)$ensembl_gene_id]
+mm <- match(all_genes, fData(sce)$ensembl_gene_id)
+is_basal <- sce$PAM50_mRNA == "Basal-like"
+Y <- t(exprs(sce)[mm, ])
+colnames(Y) <- all_genes
+df_gex <- Y %>% 
+  as_data_frame() %>% 
+  dplyr::mutate(is_basal, z = pData(sce)[['tmap']]) %>% 
+  gather(gene, expression, -is_basal, -z)
+df_pheno <- bind_rows(
+  lapply(names(gene_list_ensembl), function(n) {
+    data_frame(pathway = n, gene = gene_list_ensembl[[n]])
+  })
+)
+df <- inner_join(df_gex, df_pheno, by = 'gene')
+df2 <- filter(df, !is.na(is_basal)) %>% 
+  group_by(gene, pathway, is_basal) %>% 
+  summarise(gex = mean(expression))
+df3 <- df %>% # filter(df, !is.na(is_basal)) %>% 
+  group_by(pathway, z) %>% 
+  summarise(gex = median(expression))
+ggplot(df3, aes(x = z, y = gex)) + 
+  geom_point(alpha = 0.7) + 
+  facet_wrap(~ pathway, scales = 'free_y') +
+  ylab("Median pathway expression") +
+  stat_smooth(color = 'red', se = F)
+
+
 

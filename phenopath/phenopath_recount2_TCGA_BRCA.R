@@ -10,6 +10,9 @@ require(ggrepel)
 require(ggsci)
 require(viridis)
 require(dplyr)
+require(limma)
+require(edgeR)
+require(matrixStats)
 require(goseq)
 genome <- "hg19"
 id <- "ensGene"
@@ -18,13 +21,11 @@ plotNgos <- 10
 topCorrThresh <- 0.5  # 0.5 in Campbell and Yau 2018; to select most corr. for GO enrichment
 topBetaThresh <- 0.5  # 0.5 in Campbell and Yau 2018; to select highest beta for GO enrichment
 
-library("limma")
-library("edgeR")
 meanExprThresh_limma <- 0.5
 
 startTime <-  Sys.time()
 
-
+source("phenopath_my_utils.R")
 
 
 betaU <-"\u03B2" 
@@ -60,7 +61,7 @@ dir.create(outFolder, recursive=TRUE)
 # load input data
 brca_data_raw <- get(load(file.path(inFolder, paste0("all_counts_onlyPF_", purityFilter, ".Rdata"))))
 dim(brca_data_raw)
-# 25526   916
+# 25526   893
 
 stopifnot(brca_data_raw >= 0)
 
@@ -125,8 +126,15 @@ brca_data_gcNorm_log <- log2(brca_dat_gcNorm + 1)
 nTCGA <- sum(grepl("^TCGA", colnames(brca_data_gcNorm_log)))
 stopifnot(nTCGA == ncol(brca_data_gcNorm_log))
 ERpos_samples <- colnames(brca_data_gcNorm_log)[colnames(brca_data_gcNorm_log) %in%
-                                                  tcga_annot_dt$cgc_sample_id[tcga_annot_dt$ER_status == "pos"]]
+                                                  tcga_annot_dt$cgc_sample_id[tcga_annot_dt$ER_status == "Positive"]]
 nERpos <- length(ERpos_samples)
+
+ERneg_samples <- colnames(brca_data_gcNorm_log)[colnames(brca_data_gcNorm_log) %in%
+                                                  tcga_annot_dt$cgc_sample_id[tcga_annot_dt$ER_status == "Negative"]]
+nERneg <- length(ERneg_samples)
+
+stopifnot(colnames(brca_data_gcNorm_log) == c(ERpos_samples, ERneg_samples))
+
 
 ################################### 
 ################################### PCA ON not norm DATA -> for comparison
@@ -135,236 +143,154 @@ brca_data_notNorm_log <- log2(brca_data_forNorm + 1)
 
 brca_data_notNorm_log_no0 <- brca_data_notNorm_log[rowSums(brca_data_notNorm_log) > 0,]
 
-
-pca_ov <- prcomp(t(brca_data_notNorm_log_no0), scale=TRUE)
-pca_brca_lowrepr <- pca_ov$x
+pca_brca <- prcomp(t(brca_data_notNorm_log_no0), scale=TRUE)
+pca_brca_lowrepr <- pca_brca$x
 stopifnot(nrow(pca_brca_lowrepr) == nTCGA)
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_tcga_gtex.", plotType))
+stopifnot(rownames(pca_brca_lowrepr) == tcga_annot_dt$cgc_sample_id)
+
+mycolvect <- 1+as.numeric(tcga_annot_dt$ER_status == "Positive")
+
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_ERpos_ERneg.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
+        main="TCGA BRCA notNorm notFilt (log2(.+1))",
+        col=mycolvect)
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
+dev.off()
+cat(paste0("... written: ", outFile, "\n"))
 
-pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_ov),
-        main="TCGA+GTEX OV notNorm (log2(.+1))",
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_ERpos_ERneg.", plotType))
+do.call(plotType, list(outFile, height=myHeight, width=myWidth))
+#dev.off()
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
+        main="TCGA BRCA notNorm notFilt (log2(.+1))",
         col=1+as.numeric(grepl("TCGA", rownames(pca_brca_lowrepr))))
-mtext(text=paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA), side=3)
-legend("topleft", legend=c("GTEX", "TCGA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_tcga_gtex.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-#dev.off()
-pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_ov),
-        main="TCGA+GTEX OV notNorm (log2(.+1))",
-        col=1+as.numeric(grepl("TCGA", rownames(pca_brca_lowrepr))))
-mtext(text=paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA), side=3)
-legend("topleft", legend=c("GTEX", "TCGA"), pch=16, col=c(1,2), bty="n")
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
+### here I see a cluster
+# but not on the norm data.. ?! 
 
 
-#### check if I have some outliers within TCGA or GTEX cohorts
-gtex_raw_data_log <- brca_data_notNorm_log[,grep("^GTEX", colnames(brca_data_notNorm_log))]
-tcga_raw_data_log <- brca_data_notNorm_log[,grep("^TCGA", colnames(brca_data_notNorm_log))]
-stopifnot(ncol(gtex_raw_data_log) + ncol(tcga_raw_data_log) == ncol(brca_data_notNorm_log))
 
-### FOR PCA -> I need to remove genes that sum to 0 otherwise cannot scale data
-gtex_raw_data_log <- gtex_raw_data_log[rowSums(gtex_raw_data_log) > 0,]
-tcga_raw_data_log <- tcga_raw_data_log[rowSums(tcga_raw_data_log) > 0,]
-
-
-# do I have batch effect within TCGA (plate)
-# The default is FALSE for consistency with S, but in general scaling is advisable
-# also scaled in https://kieranrcampbell.github.io/phenopath/phenopath_shalek_vignette.html
-tcga_pca_ov <- prcomp(t(tcga_raw_data_log), scale=TRUE)
-tcga_pca_brca_lowrepr <- tcga_pca_ov$x
-stopifnot(nrow(tcga_pca_brca_lowrepr) == nTCGA)
-
-stopifnot(tcga_annot_dt$cgc_sample_id == colnames(tcga_raw_data_log))
-tcga_annot_dt$cgc_sample_tissue_source_site_fact <- as.factor(tcga_annot_dt$cgc_sample_tissue_source_site)
-
-
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_raw_data_tcga_pca_12.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=tcga_pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(tcga_pca_ov),
-        col = tcga_annot_dt$cgc_sample_tissue_source_site_fact,
-        main="TCGA OV notNorm (log2(.+1))")
-mtext(text=paste0("nTCGA=",nTCGA, " (color-coded by tissue source site)"), side=3)
-legend("topleft", legend=c("color-code source site"), bty="n")
-# apparently there is no batch effect
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_raw_data_tcga_pca_23.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=tcga_pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(tcga_pca_ov),
-        col = tcga_annot_dt$cgc_sample_tissue_source_site_fact,
-        main="TCGA OV notNorm (log2(.+1))")
-mtext(text=paste0("nTCGA=",nTCGA, " (color-coded by tissue source site)"), side=3)
-legend("topleft", legend=c("color-code source site"), bty="n")
-# apparently there is no batch effect
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-
-# do I have batch effect within gtex
-gtex_pca_ov <- prcomp(t(gtex_raw_data_log), scale=TRUE)
-gtex_pca_brca_lowrepr <- gtex_pca_ov$x
-stopifnot(nrow(gtex_pca_brca_lowrepr) == nGTEX)
-
-
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_raw_data_gtex_pca_12.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=gtex_pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(gtex_pca_ov),
-        main="GTEX OV notNorm (log2(.+1))")
-mtext(text=paste0("nGTEX=",nGTEX, ""), side=3)
-#legend("topleft", legend=c("color-code source site"), bty="n")
-# here there is an issue with one guy !!!
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_raw_data_gtex_pca_23.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=gtex_pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(gtex_pca_ov),
-        main="GTEX OV notNorm (log2(.+1))")
-mtext(text=paste0("nGTEX=",nGTEX, ""), side=3)
-#legend("topleft", legend=c("color-code source site"), bty="n")
-# here there is an issue with one guy !!!
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-
-rm(gtex_raw_data_log)
-rm(tcga_raw_data_log)
 
 ################################### 
-################################### PCA ON NORM DATA 
+################################### PCA ON  norm but not filt DATA -> for comparison
 ################################### 
 
-#### check if I have some outliers within TCGA or GTEX cohorts
-gtex_data_log <- brca_data_gcNorm_log[,grep("^GTEX", colnames(brca_data_gcNorm_log))]
-tcga_data_log <- brca_data_gcNorm_log[,grep("^TCGA", colnames(brca_data_gcNorm_log))]
+brca_data_gcNorm_log_no0 <- brca_data_gcNorm_log[rowSums(brca_data_gcNorm_log) > 0,]
 
-stopifnot(ncol(gtex_data_log) + ncol(tcga_data_log) == ncol(brca_data_gcNorm_log))
+pca_brca <- prcomp(t(brca_data_gcNorm_log_no0), scale=TRUE)
+pca_brca_lowrepr <- pca_brca$x
+stopifnot(nrow(pca_brca_lowrepr) == nTCGA)
 
-### FOR PCA -> I need to remove genes that sum to 0 otherwise cannot scale data
-tcga_data_log <- tcga_data_log[rowSums(tcga_data_log) > 0,]
-gtex_data_log <- gtex_data_log[rowSums(gtex_data_log) > 0,]
+stopifnot(rownames(pca_brca_lowrepr) == tcga_annot_dt$cgc_sample_id)
 
-# do I have batch effect within TCGA (plate)
-# The default is FALSE for consistency with S, but in general scaling is advisable
-# also scaled in https://kieranrcampbell.github.io/phenopath/phenopath_shalek_vignette.html
-tcga_pca_ov <- prcomp(t(tcga_data_log), scale=TRUE)
-tcga_pca_brca_lowrepr <- tcga_pca_ov$x
-stopifnot(nrow(tcga_pca_brca_lowrepr) == nTCGA)
+mycolvect <- 1+as.numeric(tcga_annot_dt$ER_status == "Positive")
 
-stopifnot(tcga_annot_dt$cgc_sample_id == colnames(tcga_data_log))
-tcga_annot_dt$cgc_sample_tissue_source_site_fact <- as.factor(tcga_annot_dt$cgc_sample_tissue_source_site)
-
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_data_tcga_pca_12.", plotType))
+outFile <- file.path(outFolder, paste0("in_norm_data_pca_12_ERpos_ERneg.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=tcga_pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(tcga_pca_ov),
-        col = tcga_annot_dt$cgc_sample_tissue_source_site_fact,
-        main="TCGA OV (log2(.+1))")
-mtext(text=paste0("nTCGA=",nTCGA, " (color-coded by tissue source site)"), side=3)
-legend("topleft", legend=c("color-code source site"), bty="n")
-# apparently there is no batch effect
+#dev.off()
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
+        main="TCGA BRCA norm notFilt (log2(.+1))",
+        col=mycolvect)
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_data_tcga_pca_23.", plotType))
+outFile <- file.path(outFolder, paste0("in_^norm_pca_23_ERpos_ERneg.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=tcga_pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(tcga_pca_ov),
-        col = tcga_annot_dt$cgc_sample_tissue_source_site_fact,
-        main="TCGA OV (log2(.+1))")
-mtext(text=paste0("nTCGA=",nTCGA, " (color-coded by tissue source site)"), side=3)
-legend("topleft", legend=c("color-code source site"), bty="n")
-# apparently there is no batch effect
+#dev.off()
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
+        main="TCGA BRCA norm notFilt (log2(.+1))",
+        col=1+as.numeric(grepl("TCGA", rownames(pca_brca_lowrepr))))
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
+dev.off()
+cat(paste0("... written: ", outFile, "\n"))
+
+#### ADD SOME FILTERING HERE
+
+# For input to PhenoPath we used the 4,579 genes whose variance in log(TPM+1)
+# expression was greater than 1 and whose median absolute deviation was greater than 0
+
+var_exprs <- rowVars(brca_data_gcNorm_log)
+mad_exprs <- rowMads(brca_data_gcNorm_log)
+to_keep <-  var_exprs > var_thresh & mad_exprs > mad_thresh
+
+brca_data_gcNorm_log <- brca_data_gcNorm_log[to_keep,]
+
+cat(paste0("... keep highly variable genes ", nrow(brca_data_gcNorm_log), "/", length(to_keep), "\n"))
+
+################################### 
+################################### PCA ON NORM + filtered DATA 
+################################### 
+
+pca_brca <- prcomp(t(brca_data_gcNorm_log), scale=TRUE)
+pca_brca_lowrepr <- pca_brca$x
+stopifnot(nrow(pca_brca_lowrepr) == nTCGA)
+
+stopifnot(rownames(pca_brca_lowrepr) == tcga_annot_dt$cgc_sample_id)
+
+mycolvect <- 1+as.numeric(tcga_annot_dt$ER_status == "Positive")
+
+outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_12_ERpos_ERneg.", plotType))
+do.call(plotType, list(outFile, height=myHeight, width=myWidth))
+#dev.off()
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
+        main="TCGA BRCA Norm+Filt (log2(.+1))",
+        col=mycolvect)
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
+dev.off()
+cat(paste0("... written: ", outFile, "\n"))
+
+outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_23_ERpos_ERneg.", plotType))
+do.call(plotType, list(outFile, height=myHeight, width=myWidth))
+#dev.off()
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
+        main="TCGA BRCA Norm+Filt (log2(.+1))",
+        col=1+as.numeric(grepl("TCGA", rownames(pca_brca_lowrepr))))
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
 
-# do I have batch effect within gtex
-gtex_pca_ov <- prcomp(t(gtex_data_log), scale=TRUE)
-gtex_pca_brca_lowrepr <- gtex_pca_ov$x
-stopifnot(nrow(gtex_pca_brca_lowrepr) == nGTEX)
+
+stop("--ok\n")
+# ################################## remove outlier with mclust [not needed with the norm  + filt ???]
 
 
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_data_gtex_pca_12.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=gtex_pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(gtex_pca_ov),
-     main="GTEX OV (log2(.+1))")
-mtext(text=paste0("nGTEX=",nGTEX, ""), side=3)
-#legend("topleft", legend=c("color-code source site"), bty="n")
-# here there is an issue with one guy !!!
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
 
 
-#dev.off()
-outFile <- file.path(outFolder, paste0("in_data_gtex_pca_23.", plotType))
-do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-pcaplot(pca_dt=gtex_pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(gtex_pca_ov),
-      main="GTEX OV (log2(.+1))")
-mtext(text=paste0("nGTEX=",nGTEX, ""), side=3)
-#legend("topleft", legend=c("color-code source site"), bty="n")
-# apparently there is no batch effect
-dev.off()
-cat(paste0("... written: ", outFile, "\n"))
-# stop("--ok\n")
 
-# ################################## remove outlier in GTEX  no dont know why I saw it the first time...
-# # outlier on PC2 !!!
+We need some QC to remove outlier cells:
+  
+  ```{r qc}
+sce <- plotPCA(sce, ntop = nrow(sce), return_SCESet = TRUE, ncomponents = 3)
+set.seed(123L)
+mc <- Mclust(redDim(sce)[,c(1,3)], G = 2)
+sce$cluster <- mc$classification
+sce$Cluster <- factor(mc$classification)
+plotReducedDim(sce, colour_by = 'Cluster', ncomponents = 3)
+pca_plot <- last_plot()
+saveRDS(pca_plot, file = "../../data/BRCA/brca_pca_plot.rds")
+to_keep_index <- which.max(table(sce$cluster))
+samples_to_keep <- which(sce$cluster == to_keep_index)
+# samples_to_keep <- sce$pct_exprs_top_100_features < 2.4
+sce <- sce[, samples_to_keep]
+sce_gene <- sce_gene[, samples_to_keep]
+```
 
-                    # pc2_outlier <- names(which.max(abs(gtex_pca_brca_lowrepr[,2])))
-                    # stopifnot(length(pc2_outlier) == 1)
-                    # gtex_annot_dt[gtex_annot_dt$sampid == pc2_outlier,]
-                    # 
-                    # # remove it from everywhere
-                    # brca_data_gcNorm_log <- brca_data_gcNorm_log[,colnames(brca_data_gcNorm_log) != pc2_outlier]
-                    # stopifnot(ncol(brca_data_gcNorm_log) == nGTEX + nTCGA -1)
-                    # nGTEX <- nGTEX -1 
-                    # gtex_data_log <- brca_data_gcNorm_log[,grep("^GTEX", colnames(brca_data_gcNorm_log))]
-                    # stopifnot(ncol(gtex_data_log) == nGTEX)
-                    # gtex_annot_dt <- gtex_annot_dt[gtex_annot_dt$sampid != pc2_outlier,]
-                    # stopifnot(gtex_annot_dt$sampid == colnames(gtex_data_log))
-                    # 
-                    # gtex_data_log <- gtex_data_log[rowSums(gtex_data_log) > 0,]
-                    # 
-                    # ########################### REDO THE GTEX PCA WITHOUT THE OUTLIER
-                    # # do I have batch effect within gtex
-                    # gtex_pca_ov <- prcomp(t(gtex_data_log), scale=TRUE)
-                    # gtex_pca_brca_lowrepr <- gtex_pca_ov$x
-                    # stopifnot(nrow(gtex_pca_brca_lowrepr) == nGTEX)
-                    # 
-                    # #dev.off()
-                    # outFile <- file.path(outFolder, paste0("in_data_gtex_pca_12_no_outlier.", plotType))
-                    # do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-                    # pcaplot(pca_dt=gtex_pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(gtex_pca_ov),
-                    #         main="GTEX OV (log2(.+1))")
-                    # mtext(text=paste0("nGTEX=",nGTEX, ""), side=3)
-                    # #legend("topleft", legend=c("color-code source site"), bty="n")
-                    # # here there is an issue with one guy !!!
-                    # dev.off()
-                    # cat(paste0("... written: ", outFile, "\n"))
-                    # 
-                    # #dev.off()
-                    # outFile <- file.path(outFolder, paste0("in_data_gtex_pca_23_no_outlier.", plotType))
-                    # do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-                    # pcaplot(pca_dt=gtex_pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(gtex_pca_ov),
-                    #         main="GTEX OV (log2(.+1))")
-                    # mtext(text=paste0("nGTEX=",nGTEX, ""), side=3)
-                    # #legend("topleft", legend=c("color-code source site"), bty="n")
-                    # # apparently there is no batch effect
-                    # dev.off()
-                    # cat(paste0("... written: ", outFile, "\n"))
+
+
 
 rm(gtex_data_log)
 rm(tcga_data_log)
@@ -405,7 +331,7 @@ gtex_density_all <- density(brca_data_gcNorm_log[,grep("^GTEX", colnames(brca_da
 tcga_density_all <- density(brca_data_gcNorm_log[,grep("^TCGA", colnames(brca_data_gcNorm_log))])
 
 # dev.off()
-outFile <- file.path(outFolder, paste0("all_counts_log_tcga_gtex_density.", plotType))
+outFile <- file.path(outFolder, paste0("all_counts_log_ERpos_ERneg_density.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(gtex_density_all, main="data density (log2(.+1))",
      xlim=range(c(gtex_density_all$x, tcga_density_all$x)),
@@ -423,7 +349,7 @@ gtex_density_madF <- density(brca_data_filtered[,grep("^GTEX", colnames(brca_dat
 tcga_density_madF <- density(brca_data_filtered[,grep("^TCGA", colnames(brca_data_filtered))])
 
 # dev.off()
-outFile <- file.path(outFolder, paste0("MADfiltered_counts_log_tcga_gtex_density.", plotType))
+outFile <- file.path(outFolder, paste0("MADfiltered_counts_log_ERpos_ERneg_density.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(gtex_density_madF, main="data density (log2(.+1))",
      xlim=range(c(gtex_density_madF$x, tcga_density_madF$x)),
@@ -442,7 +368,7 @@ gtex_density_all <- density(apply(brca_data_gcNorm_log[,grep("^GTEX", colnames(b
 tcga_density_all <- density(apply(brca_data_gcNorm_log[,grep("^TCGA", colnames(brca_data_gcNorm_log))], 1, mad))
 
 # dev.off()
-outFile <- file.path(outFolder, paste0("all_mads_tcga_gtex_density.", plotType))
+outFile <- file.path(outFolder, paste0("all_mads_ERpos_ERneg_density.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(gtex_density_all, main="data density (log2(.+1))",
      xlim=range(c(gtex_density_all$x, tcga_density_all$x)),
@@ -462,7 +388,7 @@ gtex_density_madF <- density(apply(brca_data_filtered[,grep("^GTEX", colnames(br
 tcga_density_madF <- density(apply(brca_data_filtered[,grep("^TCGA", colnames(brca_data_filtered))], 1, mad))
 
 # dev.off()
-outFile <- file.path(outFolder, paste0("MADfiltered_mads_tcga_gtex_density.", plotType))
+outFile <- file.path(outFolder, paste0("MADfiltered_mads_ERpos_ERneg_density.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(gtex_density_madF, main="data density (log2(.+1))",
      xlim=range(c(gtex_density_madF$x, tcga_density_madF$x)),
@@ -478,7 +404,7 @@ cat(paste0("... written: ", outFile, "\n"))
 ##############################################################
 ############################################################## PCA on merged data
 ##############################################################
-# brca_data_filtered <- get(load("PHENOPATH_RECOUNT2_TCGA_OV/brca_data_filtered.Rdata"))
+# brca_data_filtered <- get(load("PHENOPATH_RECOUNT2_TCGA_brca/brca_data_filtered.Rdata"))
 
 # phenopath tuto: sim$y is the N×G matrix of gene expression (N=100 cells and G=40 genes)
 # so I have to take the transpose of my brca_data_log_matrix to have samples in line and genes in columns
@@ -486,34 +412,34 @@ brca_data_filteredT <- t(brca_data_filtered)
 stopifnot(nGenes == ncol(brca_data_filteredT))
 stopifnot(nGTEX+nTCGA == nrow(brca_data_filteredT))
 
-pca_ov <- prcomp(brca_data_filteredT, scale=TRUE)
-pca_brca_lowrepr <- pca_ov$x
+pca_brca <- prcomp(brca_data_filteredT, scale=TRUE)
+pca_brca_lowrepr <- pca_brca$x
 stopifnot(nrow(pca_brca_lowrepr) == nGTEX+nTCGA)
 
 pc1 <- pca_brca_lowrepr[,1]
 pc2 <- pca_brca_lowrepr[,2]
 pc3 <- pca_brca_lowrepr[,3]
 
-outFile <- file.path(outFolder, paste0("in_data_pca_12_tcga_gtex.", plotType))
+outFile <- file.path(outFolder, paste0("in_data_pca_12_ERpos_ERneg.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 
-pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_ov),
-        main="TCGA+GTEX OV (log2(.+1))",
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
+        main="TCGA+GTEX BRCA (log2(.+1))",
         col=1+as.numeric(grepl("TCGA", rownames(pca_brca_lowrepr))))
-mtext(text=paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA), side=3)
-legend("topleft", legend=c("GTEX", "TCGA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_data_pca_23_tcga_gtex.", plotType))
+outFile <- file.path(outFolder, paste0("in_data_pca_23_ERpos_ERneg.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
-pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_ov),
-        main="TCGA+GTEX OV (log2(.+1))",
+pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
+        main="TCGA+GTEX BRCA (log2(.+1))",
         col=1+as.numeric(grepl("TCGA", rownames(pca_brca_lowrepr))))
-mtext(text=paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA), side=3)
-legend("topleft", legend=c("GTEX", "TCGA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nERneg=",nERneg, "; nERpos=",nERpos), side=3)
+legend("topleft", legend=c("ER-", "ER+"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -556,7 +482,7 @@ if(runPheno) {
   outFile <- file.path(outFolder, paste0("brca_phenopath_fit.Rdata"))
   brca_phenopath_fit <- get(load(outFile))
 }
-#   brca_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_OV/brca_phenopath_fit.Rdata"))
+#   brca_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_brca/brca_phenopath_fit.Rdata"))
 
 
 ######################################################## 
@@ -1053,24 +979,24 @@ cat(paste0("... written: ", outFile, "\n"))
 
 ############## PC dots with color-coded by pseudotime gradient ##############
 
-p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(2,3), summ_dt=summary(pca_ov),
+p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(2,3), summ_dt=summary(pca_brca),
             condvect = gsub("(^.+?)-.+", "\\1", rownames(pca_brca_lowrepr)),
             colvect=brca_pseudotimes,
-            mytit = paste0("TCGA+GTEX OV notNorm (log2(.+1))"),
+            mytit = paste0("TCGA+GTEX BRCA notNorm (log2(.+1))"),
             mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_tcga_gtex.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_ERpos_ERneg.", plotType))
 ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
-p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,2), summ_dt=summary(pca_ov),
+p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,2), summ_dt=summary(pca_brca),
             condvect = gsub("(^.+?)-.+", "\\1", rownames(pca_brca_lowrepr)),
             colvect=brca_pseudotimes,
-            mytit = paste0("TCGA+GTEX OV notNorm (log2(.+1))"),
+            mytit = paste0("TCGA+GTEX BRCA notNorm (log2(.+1))"),
             mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_tcga_gtex.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_ERpos_ERneg.", plotType))
 ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -1236,8 +1162,8 @@ cat(paste0("... written: ", outFile, "\n"))
 
 # see e.g. http://research.libd.org/recountWorkflow/articles/recount-workflow.html
 # brca_data_raw comes from here:
-# ovary_gtex <- scale_counts(TCGAquery_recount2(project="gtex", tissue = "ovary")$gtex_ovary)
-# ovary_tcga <- scale_counts(TCGAquery_recount2(project="tcga", tissue = "ovary")$tcga_ovary)
+# ovary_gtex <- scale_counts(TCGAquery_recount2(project="gtex", tissue = "ovary")$gtex_brcaary)
+# ovary_tcga <- scale_counts(TCGAquery_recount2(project="tcga", tissue = "ovary")$tcga_brcaary)
 # # I skip some steps of processing, but I have in the end 
 # # gene x sample matrix with GTEX samples starting with GTEX- and TCGA samples with TCGA-
 # ovary_all_data <- cbind(assays(ovary_gtex)$counts, assays(ovary_tcga)$counts)
@@ -1373,241 +1299,4 @@ stop("--ok\n")
 ####################################################################################################
 ### THRASH
 ####################################################################################################
-
-
-# TCGA annot of interest
-
-# [1] "cgc_file_platform"
-# Illumina HiSeq 
-# 430 
-# [1] "cgc_file_investigation"
-# TCGA-OV 
-# 430 
-# [1] "cgc_file_disease_type"
-# Ovarian Serous Cystadenocarcinoma 
-#                               430 
-# [1] "cgc_sample_sample_type"
-#   Primary Tumor Recurrent Tumor 
-#             422               8 
-# [1] "cgc_case_vital_status"
-# Alive  Dead 
-#   192   237 
-# [1] "cgc_case_primary_site"
-# Ovary 
-#   430 
-# [1] "cgc_case_clinical_stage"
-# 
-#   Stage IC  Stage IIA  Stage IIB  Stage IIC Stage IIIA Stage IIIB Stage IIIC   Stage IV 
-#          1          3          5         18          7         18        311         64 
-# [1] "cgc_case_gender"
-# FEMALE 
-#    430 
-# [1] "cgc_drug_therapy_pharmaceutical_therapy_type"
-# 
-#               Chemotherapy            Hormone Therapy              Immunotherapy 
-#                        376                          6                          2 
-# Targeted Molecular therapy 
-# 7 
-
-
-
-# 
-# for(i in colnames(tcga_annot_dt)) {
-#   x <- table(tcga_annot_dt[,i])
-#   if(length(x) <= 10) {
-#     print(i)
-#     print(x)
-#   }
-# }
-
-
-
-# sc$plate <- droplevels(sc$plate)
-# batch <- sc$plate
-# design <- model.matrix(~ 1, data = pData(sc))
-# exprs_combat <- ComBat(exprs(sc), batch, design)
-# exprs(sc) <- exprs_combat
-# Subset to those with mutations:
-
-# make each sample to have the same range of expression
-dim(tcga_data_log)
-# [1] 25224   430
-tcga_data_log_norm <- apply(tcga_data_log, 2, function(x) (x- min(x)) / (max(x)- min(x)))
-gtex_data_log_norm <- apply(gtex_data_log, 2, function(x) (x- min(x)) / (max(x)-min(x)))
-
-brca_data_log_norm <- cbind(tcga_data_log_norm, gtex_data_log_norm)
-pca_brca_norm <- prcomp(t(brca_data_log_norm), scale=TRUE)
-pca_brca_norm_lowrepr <- pca_brca_norm$x
-stopifnot(nrow(pca_brca_norm_lowrepr) == nGTEX+nTCGA)
-
-dev.off()
-plot(x = pca_brca_norm_lowrepr[,1],
-     y = pca_brca_norm_lowrepr[,2],
-     xlab="PC1", ylab="PC2",
-     main="TCGA+GTEX OV (log2(.+1))",
-     pch=16,
-     col=1+as.numeric(grepl("TCGA", rownames(pca_brca_norm_lowrepr))))
-mtext(text=paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA), side=3)
-legend("topleft", legend=c("GTEX", "TCGA"), pch=16, col=c(1,2), bty="n")
-
-
-
-stopifnot(colnames(brca_data_filteredT) %in% gene_lab_dt$geneID_short)  
-
-unique(sapply(colnames(brca_data_filteredT), function(x) sum(x %in% gene_lab_dt$geneID_short)))
-# [1] 1   # there is no ambiguity in gene name
-sub_gene_lab_dt <- gene_lab_dt[gene_lab_dt$geneID_short %in% colnames(brca_data_filteredT), ]
-sub_gene_lab_dt$mapping_source <- NULL
-sub_gene_lab_dt <- unique(sub_gene_lab_dt)
-any(duplicated(sub_gene_lab_dt$geneID_short))
-any(duplicated(sub_gene_lab_dt$geneSymb))
-
-sub_gene_lab_dt[sub_gene_lab_dt$geneID_short == df_beta$gene[which_largest],]
-# PLXNC1 -> tumor suppressor gene !
-
-
-
-
-
-df_large <- data.frame(
-  y = brca_data_filteredT[, which_lowest],
-  x = mycovar,
-  z = brca_pseudotimes
-)
-
-#dev.off()
-df_large$covar_lab <- ifelse(mycovar == 1, "TCGA", "GTEX")
-
-p <- ggplot(df_large, aes(x = z, y = y, color = covar_lab))+
-  geom_point() +
-  ylab("Expression (GCnorm + log2(.+1))") +
-  xlab("PP Pseudotimes")+
-  ggtitle(paste0("",beta_topGene ), subtitle=paste0("highest beta (", round(df_beta$beta[which_lowest], 3), ")"))+
-  labs(color="")+
-  scale_color_brewer(palette = "Set1") +
-  stat_smooth()+
-  theme(plot.title = element_text(hjust=0.5),
-        plot.subtitle = element_text(hjust=0.5))
-
-
-which_largest <- which.max(df_beta$beta)
-beta_topGene <- df_beta$geneSymb[which_largest]
-
-df_large <- data.frame(
-  y = brca_data_filteredT[, which_largest],
-  x = mycovar,
-  z = brca_pseudotimes
-)
-
-#dev.off()
-df_large$covar_lab <- ifelse(mycovar == 1, "TCGA", "GTEX")
-
-p <- ggplot(df_large, aes(x = z, y = y, color = covar_lab))+
-  geom_point() +
-  ylab("Expression (GCnorm + log2(.+1))") +
-  xlab("PP Pseudotimes")+
-  ggtitle(paste0("",beta_topGene ), subtitle=paste0("highest beta (", round(df_beta$beta[which_largest], 3), ")"))+
-  labs(color="")+
-  scale_color_brewer(palette = "Set1") +
-  stat_smooth()+
-  theme(plot.title = element_text(hjust=0.5),
-        plot.subtitle = element_text(hjust=0.5))
-
-
-df_curve <- frame_data(
-  ~ ER_status, ~ x, ~ xend, ~ y, ~ yend, ~ curvature,
-  "ER-positive", -50, 20, 27, 40, 0.1,
-  "ER-negative", 55, 60, -35, 40, -0.1
-)
-geom_curve(aes(x = x, y = y, xend = xend, yend = yend),
-           data = filter(df_curve, ER_status == "ER-negative"), color = 'black',
-           curvature = df_curve$curvature[2], arrow = arrow(length = unit(0.3, "cm"), type = "open"), 
-           size = 1.5) +
-  
-  
-df_curve$ER_status <- factor(df_curve$ER_status, levels = df_curve$ER_status)
-plt <- filter(df_pca, ER_status != "indeterminate") %>% 
-  ggplot(aes(x = PC2, y = PC3)) +
-  geom_point(data = df_no_er, fill = "grey80", color = "grey80", size = 3) +
-  geom_point(aes(fill = pseudotime), shape = 21, color = 'grey20', size = 3) +
-  scale_fill_viridis(name = "Pseudotime", option = "C") + 
-  facet_wrap(~ ER_status) +
-  theme(legend.position = c(.4,.08),
-        legend.direction = "horizontal") +
-  geom_curve(aes(x = x, y = y, xend = xend, yend = yend),
-             data = filter(df_curve, ER_status == "ER-negative"), color = 'black',
-             curvature = df_curve$curvature[2], arrow = arrow(length = unit(0.3, "cm"), type = "open"), 
-             size = 1.5) +
-  geom_curve(aes(x = x, y = y, xend = xend, yend = yend),
-             data = filter(df_curve, ER_status == "ER-positive"), color = 'black',
-             curvature = df_curve$curvature[1], arrow = arrow(length = unit(0.3, "cm"), type = "open"), 
-             size = 1.5) +
-  theme(strip.background = element_rect(fill = "grey95", color = "grey30", size = 1),
-        legend.text = element_text(size = 8),
-        axis.text = element_text(size = 9),
-        axis.title = element_text(size = 10),
-        legend.title = element_text(size = 10)) +
-  xlim(-72, 83) + ylim(-50, 50)
-```
-
-
-
-Time for some reactome fun:
-  
-  ```{r reactome-time}
-pathways <- c("1643713", "1226099",
-              "2219528", "2644603",
-              "3304351", "4791275")
-id_to_name <- as.list(reactomePATHID2NAME)
-pathway_names <- id_to_name[pathways]
-pathways_to_genes <- as.list(reactomePATHID2EXTID)
-gene_list <- pathways_to_genes[pathways]
-pathway_names <- sapply(pathway_names, function(pn) {
-  gsub("Homo sapiens: ", "", pn)
-})
-names(gene_list) <- pathway_names
-mart <- useMart("ensembl", "hsapiens_gene_ensembl")
-to_ensembl <- function(gl) {
-  bm <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
-              filters = c("entrezgene"),
-              values = as.numeric(gl),
-              mart = mart)
-  return(bm$ensembl_gene_id)
-}
-gene_list_ensembl <- lapply(gene_list, to_ensembl)
-```
-
-And graph the results for various metrics:
-  
-  ```{r graph-for-metrics, eval = FALSE}
-sce <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
-all_genes <- unique(unlist(gene_list_ensembl))
-all_genes <- all_genes[all_genes %in% fData(sce)$ensembl_gene_id]
-mm <- match(all_genes, fData(sce)$ensembl_gene_id)
-is_basal <- sce$PAM50_mRNA == "Basal-like"
-Y <- t(exprs(sce)[mm, ])
-colnames(Y) <- all_genes
-df_gex <- Y %>% 
-  as_data_frame() %>% 
-  dplyr::mutate(is_basal, z = pData(sce)[['tmap']]) %>% 
-  gather(gene, expression, -is_basal, -z)
-df_pheno <- bind_rows(
-  lapply(names(gene_list_ensembl), function(n) {
-    data_frame(pathway = n, gene = gene_list_ensembl[[n]])
-  })
-)
-df <- inner_join(df_gex, df_pheno, by = 'gene')
-df2 <- filter(df, !is.na(is_basal)) %>% 
-  group_by(gene, pathway, is_basal) %>% 
-  summarise(gex = mean(expression))
-df3 <- df %>% # filter(df, !is.na(is_basal)) %>% 
-  group_by(pathway, z) %>% 
-  summarise(gex = median(expression))
-ggplot(df3, aes(x = z, y = gex)) + 
-  geom_point(alpha = 0.7) + 
-  facet_wrap(~ pathway, scales = 'free_y') +
-  ylab("Median pathway expression") +
-  stat_smooth(color = 'red', se = F)
-
-
 

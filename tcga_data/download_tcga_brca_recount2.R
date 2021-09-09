@@ -70,6 +70,14 @@ head(full_annot_dt$bcr_patient_barcode)
 head(full_annot_dt$patient_id)
 # [1] "patient_id" "CDE_ID:"    "AAAU"       "AALI"       "AALJ"       "AALK"      
 
+# stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
+# this is not TRUE ! I have duplicated samples
+# see discussion here: https://www.biostars.org/p/311017/
+# when duplicated, I take the one with highest median value
+
+
+### !!! TODO
+
 tcga_sampleAnnot$patient_barcode <- substr(start=1, stop=12, tcga_sampleAnnot$cgc_sample_id)
 stopifnot(tcga_sampleAnnot$patient_barcode %in% full_annot_dt$bcr_patient_barcode)
 stopifnot(!duplicated(full_annot_dt$bcr_patient_barcode))
@@ -120,6 +128,11 @@ stopifnot(ncol(tcga_counts_raw_pF) == nPureSamp)
 stopifnot(nrow(tcga_sampleAnnot) == nPureSamp)
 stopifnot(colnames(tcga_counts_raw_pF) %in% c(ERpos_samples, ERneg_samples))
 
+ERpos_samples <- ERpos_samples[ERpos_samples %in% rownames(tcga_sampleAnnot)]
+nERpos <- length(ERpos_samples)
+ERneg_samples <- ERneg_samples[ERneg_samples %in% rownames(tcga_sampleAnnot)]
+nERneg <- length(ERneg_samples)
+stopifnot(colnames(tcga_counts_raw_pF) == c(ERpos_samples, ERneg_samples))
 
 # for tcga -> takes the one filtered
 tcga_counts_all <- tcga_counts_raw_pF
@@ -138,10 +151,36 @@ gene_dt = data.frame(
   stringsAsFactors = FALSE
 )
 
+# I think lot of non coding no gene symb
+
 stopifnot(rownames(tcga_counts_all) == gene_dt$geneID)
 
+cat(paste0("... filter NA gene symbols: ", sum(is.na(gene_dt$geneSymb)), "\n"))
+# 32511
+gene_dt <- gene_dt[!is.na(gene_dt$geneSymb),]
+stopifnot(gene_dt$geneID %in% rownames(tcga_counts_all))
+tcga_counts_all <- tcga_counts_all[gene_dt$geneID,]
+stopifnot(!is.na(tcga_counts_all))
+dim(tcga_counts_all)
+#[1] 25526   916
+stopifnot(rownames(tcga_counts_all) == gene_dt$geneID)
+stopifnot(nrow(tcga_counts_all) == nrow(gene_dt))
+stopifnot(colnames(tcga_counts_all) == c(ERpos_samples, ERneg_samples))
+stopifnot(ncol(tcga_counts_all) == nERneg+nERpos)
+
+outFile <- file.path(outFolder, "tcga_sampleAnnot.Rdata")
+save(tcga_sampleAnnot, file=outFile)
+cat(paste0("... written ", outFile, "\n"))
 
 
+stopifnot(colnames(tcga_counts_all) == rownames(tcga_sampleAnnot))
+stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
+colnames(tcga_counts_all) <- tcga_sampleAnnot$cgc_sample_id
+
+
+outFile <- file.path(outFolder, "tcga_sampleAnnot.Rdata")
+save(tcga_sampleAnnot, file=outFile)
+cat(paste0("... written ", outFile, "\n"))
 
 
 outFile <- file.path(outFolder, paste0("all_counts_onlyPF_", tcga_purity_thresh, ".Rdata"))

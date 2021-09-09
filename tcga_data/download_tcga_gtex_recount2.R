@@ -15,9 +15,6 @@ dir.create(outFolder)
 
 
 tcga_purity_thresh <- 0.6 # cf Lucchetta et al. 2019
-# update: I think it makes more sense to filter based on the 2 datasets
-# (e.g. in Campbell and Yau, they filter the 2 conditions together, see also limma 1,2,3 https://f1000research.com/articles/5-1408)
-full_countMeans_filter <- 0
 
 # update
 # no filter based on duplicated ensembl ID but remove the NA gene symbol (I guess might be the non-protein coding)
@@ -337,3 +334,9 @@ rownames(all_counts) <- g2s[common_ids]
 
 stopifnot(length(new_rownames1) == nrow(all_counts))
 
+
+
+# update: I think it makes more sense to filter based on the 2 datasets
+# (e.g. in Campbell and Yau, they filter the 2 conditions together, see also limma 1,2,3 https://f1000research.com/articles/5-1408)
+full_countMeans_filter <- 0
+# now done in later script

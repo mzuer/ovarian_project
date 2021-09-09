@@ -11,9 +11,6 @@ require(ggsci)
 require(viridis)
 require(dplyr)
 require(goseq)
-require("limma")
-require("edgeR")
-
 genome <- "hg19"
 id <- "ensGene"
 go_cat <- "GO:BP"
@@ -21,20 +18,18 @@ plotNgos <- 10
 topCorrThresh <- 0.5  # 0.5 in Campbell and Yau 2018; to select most corr. for GO enrichment
 topBetaThresh <- 0.5  # 0.5 in Campbell and Yau 2018; to select highest beta for GO enrichment
 
+library("limma")
+library("edgeR")
 meanExprThresh_limma <- 0.5
-
-# filter to keep only the highly variable genes
-# Campbell 2018: 
-# for BRAC, whose variance in log(TPM+1) expression was greater than 1 and whose median absolute deviation was greater than 0
-# for COAD: s whose median absolute deviation in log(TPM+1) expression was greater than sqrt(0.5)
-mad_thresh <- sqrt(0.5)
-
-purityFilter <- 0.6  # for the input file
 
 startTime <-  Sys.time()
 
-source("phenopath_my_utils.R")
 
+
+
+betaU <-"\u03B2" 
+lambdaU <- "\u03BB"
+chiU <- "\u03C7"
 
 runPheno <- F
 runNorm <- F
@@ -63,6 +58,14 @@ myHeight <- myWidth <- 400
 myHeightGG <- 6
 myWidthGG <- 6
 
+# filter to keep only the highly variable genes
+# Campbell 2018: 
+# for BRAC, whose variance in log(TPM+1) expression was greater than 1 and whose median absolute deviation was greater than 0
+# for COAD: s whose median absolute deviation in log(TPM+1) expression was greater than sqrt(0.5)
+mad_thresh <- sqrt(0.5)
+
+
+purityFilter <- 0.6
 
 inFolder <- file.path("..","tcga_data","DOWNLOAD_TCGA_GTEX_RECOUNT2")
 

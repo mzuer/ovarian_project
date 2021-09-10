@@ -8,7 +8,7 @@ startTime <- Sys.time()
 
 cat(paste0("> START ", startTime, "\n"))
 
-outFolder <- "DOWNLOAD_TCGA_BRCA_RECOUNT2_CHECK"
+outFolder <- "DOWNLOAD_TCGA_BRCA_RECOUNT2"
 dir.create(outFolder)
 
 
@@ -19,7 +19,7 @@ tcga_purity_thresh <- 0.6 # cf Lucchetta et al. 2019
 # duplicated samples
 # https://www.biostars.org/p/311017/
 
-compute_meds <- TRUE
+compute_meds <- FALSE
 
 ############################################## 
 ############################################## prepare TCGA data
@@ -61,17 +61,21 @@ stopifnot(tcga_sampleAnnot[,"cgc_file_experimental_strategy"] == "RNA-Seq")#
 ####~~~ 1st FILTER HERE -> TAKE ONLY PRIMARY TUMOR !!!
 stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
 #*** update here:
+cat(paste0("... filter 1 - primary tumor: ",sum(tcga_sampleAnnot$cgc_sample_sample_type == "Primary Tumor"), "/",
+           nrow(tcga_sampleAnnot), "\n"))
 tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$cgc_sample_sample_type == "Primary Tumor",]
 ####~~~2nd ADDED FILTER -> discard FFPE samples
 # (seems to be a good practice, e.g.: https://www.biostars.org/p/308192/)
 stopifnot(tcga_sampleAnnot$cgc_sample_is_ffpe == ifelse(tcga_sampleAnnot$gdc_cases.samples.is_ffpe, "YES", "NO"))
 cat(paste0("... remove FFPE: ", sum(tcga_sampleAnnot$gdc_cases.samples.is_ffpe), "\n"))
 #*** update here:
+cat(paste0("... filter 2 - FFPE: ",sum( !tcga_sampleAnnot$gdc_cases.samples.is_ffpe), "/",nrow(tcga_sampleAnnot), "\n"))
 tcga_sampleAnnot <- tcga_sampleAnnot[! tcga_sampleAnnot$gdc_cases.samples.is_ffpe,]
 stopifnot(nrow(tcga_sampleAnnot) > 0)
 #*** update here:
 tcga_counts_raw_all <- tcga_counts_raw_all[,rownames(tcga_sampleAnnot)]  # filter also filter 1
 stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
+cat(paste0(dim(tcga_counts_raw_all), "\n"))
 
 ###~~~3d FILTER - protein coding only? DO THIS BEFORE COMPUTING THE MEDIAN !  -> to remove the NA gene Symbols (non coding ???)
 # take the first symbol of the list... don't know how to do better...
@@ -93,9 +97,10 @@ cat(paste0("... filter NA gene symbols: ", sum(is.na(gene_dt$geneSymb)), "\n"))
 gene_dt <- gene_dt[!is.na(gene_dt$geneSymb),]
 stopifnot(gene_dt$geneID %in% rownames(tcga_counts_raw_all))
 #*** update here:
+cat(paste0("... filter 3 - prot. cod. genes: ", length(gene_dt$geneID), "/", nrow(tcga_counts_raw_all), "\n"))
 tcga_counts_raw_all <- tcga_counts_raw_all[gene_dt$geneID,]
 stopifnot(!is.na(tcga_counts_raw_all))
-dim(tcga_counts_raw_all)
+cat(paste0(dim(tcga_counts_raw_all), "\n"))
 #[1] 25526  1127
 
 ####~~~ 4th FILTER:  PURITY FILTER FOR THE TUMOR SAMPLES - do this before removing duplicated ones !!!
@@ -115,6 +120,7 @@ cat(paste0("... samples to keep after purity filter (", tcga_purity_thresh, ") =
 # ... samples to keep after purity filter (0.6) = 84.83  %
 #*** update here
 # ~~~~ KEEP ONLY THE ONES THAT PASSED THE PURITY FILTER
+cat(paste0("... filter 4 - purity: ", length(purityinfo_brca$pure_barcodes), "/", nrow(tcga_sampleAnnot), "\n"))
 tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$labs_for_purity%in% purityinfo_brca$pure_barcodes,]
 
 ###~~~ 5th FILTER: ER STATUS FILTER
@@ -156,10 +162,11 @@ cat(nERneg, "\n")
 
 #*** update here
 # ~~~~ KEEP ONLY THE ONES THAT PASSED THE ER STATUS FILTER
+cat(paste0("... filter 5 - ER status: ",nERpos+nERneg, "/", nrow(tcga_sampleAnnot), "\n"))
 tcga_sampleAnnot <- tcga_sampleAnnot[c(ERpos_samples, ERneg_samples),]
 tcga_counts_raw_all <- tcga_counts_raw_all[,c(ERpos_samples, ERneg_samples)]  # filter also filter 4
 stopifnot(!is.na(tcga_counts_raw_all))  
-
+cat(paste0(dim(tcga_counts_raw_all), "\n"))
 
 ###~~~ FILTER 6: KEEP MAX MEDS FOR DUPLICATED SAMPLES
 cat("any duplicated(tcga_sampleAnnot$cgc_sample_id)", "\n")
@@ -243,9 +250,10 @@ if(compute_meds) {
   new_tcga_counts_raw_all <- get(load(outFile))
 }
 
-
+cat(paste0("... filter 6 - dup samples: ",ncol(new_tcga_counts_raw_all), "/", ncol(tcga_counts_raw_all), "\n"))
 ##*** update the count data
 tcga_counts_raw_all <- new_tcga_counts_raw_all
+cat(paste0(dim(tcga_counts_raw_all), "\n"))
 
 stopifnot(nrow(tcga_counts_raw_all) == nGenesCheck) 
 stopifnot(ncol(tcga_counts_raw_all) == nSampsCheck) 
@@ -312,3 +320,24 @@ cat(paste0("****** DONE"))
 cat(paste0(startTime, " - ", Sys.time(),  "\n"))
 
 stop("---ok\n")
+
+# 
+# ... filter 1 - primary tumor: 1127/1246
+# ... remove FFPE: 22
+# ... filter 2 - FFPE: 1105/1127
+# 58037
+# 1105
+# ... filter NA gene symbols: 32511
+# ... filter 3 - prot. cod. genes: 25526/58037
+# 25526
+# 1105
+# ... filter 4 - purity: 934/1105
+# ... filter 5 - ER status: 894/934
+# 25526
+# 894
+# ... filter 6 - dup samples: 882/894
+# 25526
+# 882
+
+
+

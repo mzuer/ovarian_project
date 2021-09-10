@@ -1319,19 +1319,22 @@ stop("--ok\n")
 
 
 ############## survival analysis  ##############
+#tcga_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_BRCA_RECOUNT2/tcga_sampleAnnot.Rdata"))
 library(RTCGA)
 library(RTCGA.clinical)
 
+stopifnot(!duplicated(tcga_annot_dt$patient_barcode))
 
 surv_dt <- survivalTCGA(BRCA.clinical, 
                      extract.cols="admin.disease_code")
 # Show the first few lines
 head(surv_dt)
 
-tcga_annot_dt$lab_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_annot_dt$cgc_sample_id)
-stopifnot(tcga_annot_dt$lab_for_survival %in% surv_dt$bcr_patient_barcode)
+tcga_annot_dt$labs_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_annot_dt$cgc_sample_id)
+stopifnot(tcga_annot_dt$labs_for_survival %in% surv_dt$bcr_patient_barcode)
+stopifnot(tcga_annot_dt$patient_barcode == tcga_annot_dt$labs_for_survival)
 
-surv_dt <- surv_dt[surv_dt$bcr_patient_barcode %in% tcga_annot_dt$lab_for_survival,]
+surv_dt <- surv_dt[surv_dt$bcr_patient_barcode %in% tcga_annot_dt$labs_for_survival,]
 stopifnot(nrow(surv_dt) == nrow(tcga_annot_dt))
 
 # add pseudotime info

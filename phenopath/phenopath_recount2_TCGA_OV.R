@@ -80,8 +80,8 @@ dim(ov_data_raw)
 stopifnot(ov_data_raw >= 0)
 
 
-gtex_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_GTEX_RECOUNT2/gtex_sampleAnnot.RData"))
-tcga_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_GTEX_RECOUNT2/tcga_sampleAnnot.Rdata"))
+gtex_annot_dt <- get(load(file.path(inFolder, "gtex_sampleAnnot.RData")))
+tcga_annot_dt <- get(load(file.path(inFolder, "tcga_sampleAnnot.Rdata")))
 
 # 1- gc content normalization
 # xx=rownames(ov_data_raw)
@@ -658,11 +658,11 @@ cat(paste0("... written: ", outFile, "\n"))
 nTop <- 10
   
 # show the top genes with signif interactions
-df_beta <- df_beta[order(df_beta$beta, decreasing = TRUE),]
-topPosGenes <- df_beta[1:nTop,]
+tmp_beta <- df_beta[order(df_beta$beta, decreasing = TRUE),]
+topPosGenes <- tmp_beta[1:nTop,]
 topPosGenes$dir <- "pos"
-df_beta <- df_beta[order(df_beta$beta, decreasing = FALSE),]
-topNegGenes <- df_beta[1:nTop,]
+tmp_beta <- df_beta[order(df_beta$beta, decreasing = FALSE),]
+topNegGenes <- tmp_beta[1:nTop,]
 topNegGenes$dir <- "neg"
 
 dfBeta_topGenes <- rbind(topPosGenes, topNegGenes)
@@ -789,62 +789,62 @@ stopifnot(tcga_annot_dt$gdc_cases.samples.sample_type == tcga_annot_dt$cgc_sampl
 
 myplotlab <- "tumor stage"
 stg_ords <-c(  "Stage IC", "Stage IIA" ,"Stage IIB" , "Stage IIC","Stage IIIA", "Stage IIIB","Stage IIIC",   "Stage IV")
-p <- plot_pheno_catego(tcga_annot_dt, plotvar= "cgc_case_clinical_stage", plotlab=myplotlab, varords=stg_ords)
+p <- plot_pheno_catego(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_case_clinical_stage", plotxlab=paste0("TCGA HGSC ", myplotlab), varords=stg_ords)
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 
-# plot_pheno_catego(tcga_annot_dt, plotvar= "cgc_drug_therapy_drug_name", plotlab="drug therapy", varords=NULL)
+# plot_pheno_catego(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_drug_therapy_drug_name", plotlab="drug therapy", varords=NULL)
 ## too many categories
 
 
 myplotlab <- "year of birth"
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "gdc_cases.demographic.year_of_birth", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "gdc_cases.demographic.year_of_birth", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 myplotlab <- "days to death"
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "cgc_case_days_to_death", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_case_days_to_death", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 myplotlab <- "diag. days to birth"
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "gdc_cases.diagnoses.days_to_birth", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "gdc_cases.diagnoses.days_to_birth", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 
 myplotlab <- "age at diag."
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "gdc_cases.diagnoses.age_at_diagnosis", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "gdc_cases.diagnoses.age_at_diagnosis", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 myplotlab <- "slide pct normal cells"
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "cgc_slide_percent_normal_cells", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_slide_percent_normal_cells", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 myplotlab <- "slide pct neutrophil infilt."
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "cgc_slide_percent_neutrophil_infiltration", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_slide_percent_neutrophil_infiltration", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 myplotlab <- "slide pct monocyte infilt."
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "cgc_slide_percent_monocyte_infiltration", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_slide_percent_monocyte_infiltration", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
 
 myplotlab <- "slide pct lymphocyt infilt."
-p <- plot_pheno_continuous(tcga_annot_dt, plotvar= "cgc_slide_percent_lymphocyte_infiltration", plotlab=myplotlab)
+p <- plot_pheno_cate(tcga_annot_dt,  pt_traj = all_traj, plotvar= "cgc_slide_percent_lymphocyte_infiltration", plotxlab=paste0("TCGA HGSC ", myplotlab))
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))

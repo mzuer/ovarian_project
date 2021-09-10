@@ -8,7 +8,7 @@ startTime <- Sys.time()
 
 cat(paste0("> START ", startTime, "\n"))
 
-outFolder <- "DOWNLOAD_TCGA_BRCA_RECOUNT2"
+outFolder <- "DOWNLOAD_TCGA_BRCA_RECOUNT2_CHECK"
 dir.create(outFolder)
 
 

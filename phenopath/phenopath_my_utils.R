@@ -4,9 +4,9 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-add_corr <- function(x,y, legPos="topright") {
+add_corr <- function(x,y, legPos="topright", cond_plus1="TCGA", cond_minus1="GTEX") {
   corval <- as.numeric(round(cor.test(x,y, method="spearman")$estimate, 3))
-  legend(legPos, legend=c("TCGA", "GTEX",
+  legend(legPos, legend=c(paste0(cond_plus1), paste0(cond_minus1),
                           paste0("SCC = ", corval)),
          pch=c(16, 16, -1),
          col =c(1+3, -1+3, "black"), bty="n")
@@ -171,11 +171,11 @@ plot_iGeneExpr_gg2 <- function(igene, exprdt, pseudot, covarlab, valuedt,
   return(p)
 }
 
-plot_pheno_catego <- function(annot_dt, plotvar, plotlab, varords=NULL) {
+plot_pheno_catego <- function(annot_dt, pt_traj,plotvar, plotxlab, plotylab="PP Pseudotimes", varords=NULL) {
   tcga_traj_dt <- data.frame(
     tcga_samp = annot_dt$cgc_sample_id,
     tcga_plotvar = annot_dt[,plotvar],
-    pseudotime = all_traj[annot_dt$cgc_sample_id],
+    pseudotime = pt_traj[annot_dt$cgc_sample_id],
     stringsAsFactors = FALSE
   )
   na_txt <- paste0(sum(!is.na(tcga_traj_dt$tcga_plotvar)),
@@ -190,12 +190,12 @@ plot_pheno_catego <- function(annot_dt, plotvar, plotlab, varords=NULL) {
   p <- ggplot(tcga_traj_dt, aes(x= tcga_plotvar, y= pseudotime) )+
     geom_boxplot(notch = F, outlier.shape=NA)+
     geom_jitter(aes(col=tcga_plotvar),alpha=0.7,position=position_jitterdodge())+
-    ggtitle(paste0("Pseudotime by ", plotlab),
+    ggtitle(paste0("Pseudotime by ", plotxlab),
             subtitle = paste0("(TCGA data; av.: ", na_txt, ")"))+
     scale_color_nejm()+
     scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
-    ylab("PP Pseudotimes")+
-    xlab(paste0("TCGA HGSC  ", plotlab))+
+    xlab(paste0(plotxlab))+
+    ylab(paste0(plotylab))+
     myG_theme +
     labs(color="")+
     theme(axis.text.x=element_blank(),
@@ -203,11 +203,11 @@ plot_pheno_catego <- function(annot_dt, plotvar, plotlab, varords=NULL) {
   return(p)
 }
 
-plot_pheno_continuous <- function(annot_dt, plotvar, plotlab) {
+plot_pheno_continuous <- function(annot_dt, pt_traj, plotvar, plotxlab, plotylab="PP Pseudotimes") {
   tcga_traj_dt <- data.frame(
     tcga_samp = annot_dt$cgc_sample_id,
     tcga_plotvar = annot_dt[,plotvar],
-    pseudotime = all_traj[annot_dt$cgc_sample_id],
+    pseudotime = pt_traj[annot_dt$cgc_sample_id],
     stringsAsFactors = FALSE
   )
   na_txt <- paste0(sum(!is.na(tcga_traj_dt$tcga_plotvar)),
@@ -217,12 +217,12 @@ plot_pheno_continuous <- function(annot_dt, plotvar, plotlab) {
   
   p <- ggplot(tcga_traj_dt, aes(x= tcga_plotvar, y= pseudotime) )+
     geom_point() +
-    ggtitle(paste0("Pseudotime by ", plotlab),
+    ggtitle(paste0("Pseudotime by ", plotxlab),
             subtitle = paste0("(TCGA data; av.: ", na_txt, ")"))+
-    ylab("PP Pseudotimes")+
+    ylab(paste0(plotylab))+
     scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
     scale_x_continuous(breaks = scales::pretty_breaks(n = 10))+
-    xlab(paste0("TCGA HGSC  ", plotlab))+
+    xlab(paste0(plotxlab))+
     stat_smooth()+
     theme(plot.title = element_text(hjust=0.5),
           plot.subtitle = element_text(hjust=0.5))

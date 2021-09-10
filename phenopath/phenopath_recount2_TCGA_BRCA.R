@@ -16,6 +16,7 @@ require(matrixStats)
 require(goseq)
 require(mclust)
 require(ggExtra)
+require(ReactomePA)
 
 genome <- "hg19"
 id <- "ensGene"
@@ -1333,17 +1334,62 @@ head(surv_dt)
 tcga_annot_dt$labs_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_annot_dt$cgc_sample_id)
 stopifnot(tcga_annot_dt$labs_for_survival %in% surv_dt$bcr_patient_barcode)
 stopifnot(tcga_annot_dt$patient_barcode == tcga_annot_dt$labs_for_survival)
+stopifnot(!duplicated(tcga_annot_dt$labs_for_survival))
 
+all_ERstatus <- ifelse(tcga_annot_dt$ER_status == "Positive", "ER+",
+                       ifelse(tcga_annot_dt$ER_status == "Negative", "ER-", NA))
+stopifnot(!is.na(all_ERstatus))
+all_ERstatus <- setNames(all_ERstatus, tcga_annot_dt$labs_for_survival)
 surv_dt <- surv_dt[surv_dt$bcr_patient_barcode %in% tcga_annot_dt$labs_for_survival,]
 stopifnot(nrow(surv_dt) == nrow(tcga_annot_dt))
 
 # add pseudotime info
 all_ptimes <- brca_pseudotimes
 stopifnot(rownames(brca_data_filteredT) == tcga_annot_dt$cgc_sample_id)
-names(all_ptimes) <- tcga_annot_dt$lab_for_survival
+names(all_ptimes) <- tcga_annot_dt$labs_for_survival
+
+surv_dt$pseudotime <- all_ptimes[paste0(surv_dt$bcr_patient_barcode)]
+stopifnot(!is.na(surv_dt$pseudotime))
+
+surv_dt$ER_status <- all_ERstatus[paste0(surv_dt$bcr_patient_barcode)]
+stopifnot(!is.na(surv_dt$ER_status))
+
+### TAKE ONLY THE pseudotime > 0 ???
+surv_dt <- surv_dt[surv_dt$pseudotime > 0,]
 
 # let’s run a Cox PH model
-# By default it’s going to treat breast cancer as the baseline, because alphabetically it’s first.
+# By default it’s going to treat ER- cancer as the baseline, because alphabetically it’s first.
+coxph(Surv(times, patient.vital_status)~ER_status + pseudotime, data=surv_dt)
+# This tells us that compared to the baseline ER- group, ER+ have ~0.7x increase in hazards, 
+# and pseuodtime 1.12x worse survival. 
+# Let’s create a survival curve, visualize it with a Kaplan-Meier plot, and show a table for the first 5 years survival rates.
+sfit <- survfit(Surv(times, patient.vital_status)~ER_status + pseudotime, data=surv_dt)
+time_range <- seq(0,800,2000)
+summary(sfit, times=time_range)
+
+surv_dt$pt_bin <- cut(surv_dt$pseudotime, breaks=seq(0,1,0.25))
+stopifnot(!is.na(surv_dt$pt_bin))
+
+fit1 <- survfit(Surv(times,patient.vital_status) ~ pt_bin + strata(ER_status), data = surv_dt)
+ggsurvplot(fit1, data = surv_dt, risk.table = FALSE)
+
+fit2 <- survfit(Surv(times,patient.vital_status) ~ pt_bin + ER_status, data = surv_dt)
+ggsurvplot(fit2, data = surv_dt, risk.table = FALSE)
+
+# I don't understand the difference...
+
+ggsurvplot_facet(fit2, data = surv_dt, facet.by="ER_status",risk.table = FALSE)+labs(col="Pseudotime")
+
+
+
+
+
+
+############## REACTOME PATHWAY ENRICHMENT analysis  ##############
+
+
+
+
 
 
 

@@ -353,7 +353,7 @@ stopifnot(colnames(sub_tcga_counts) == rownames(tcga_sampleAnnot))
 stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
 colnames(sub_tcga_counts) <- tcga_sampleAnnot$cgc_sample_id
 
-stopifnot(substr(start=1,stop=12,x=colnames(tcga_counts_all)) == tcga_sampleAnnot$id_for_survival)
+stopifnot(substr(start=1,stop=12,x=colnames(sub_tcga_counts)) == tcga_sampleAnnot$id_for_survival)
 
 all_counts <- cbind(sub_gtex_counts, sub_tcga_counts)
 stopifnot(rownames(all_counts)==names(g2s[common_ids]))

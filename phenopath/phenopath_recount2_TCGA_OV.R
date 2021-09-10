@@ -1339,7 +1339,7 @@ outFile <- file.path(outFolder, paste0("limma_adjPval_vs_phenopath_beta.", plotT
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(
   y=-log10(merged_dt$adj.P.Val),
-  x=df_beta$beta,
+  x=merged_dt$beta,
   pch=16,
   col=2+2*merged_dt$is_sig,
   cex.lab=1.2,
@@ -1354,13 +1354,34 @@ legend("topright", legend=c("signif.", "not signif."),
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
+##### NICER WAY with colors as in 
+# https://github.com/kieranrcampbell/phenopath_revisions/blob/master/analysis/brca_reanalysis/clvm_analysis.Rmd
+cols <- RColorBrewer::brewer.pal(3, "Set2")
+cols2 <- c("#c5e2d9", cols[2])
+p <- ggplot(merged_dt, aes(x = beta, y =-log10(adj.P.Val), color = is_sig)) + 
+  geom_point() +
+  ylab(expression(paste("limma voom -", log[10], "(adj. P-value)"))) + 
+  xlab(expression(paste("Phenopath ", beta))) +
+  # theme(legend.position = 'top') +
+  geom_hline(yintercept = -log10(0.05), linetype = 2, alpha = 0.5) +
+  theme(axis.text = element_text(size = 9),
+        axis.title = element_text(size = 10)) +
+  #theme(legend.title = element_text(size = 10),
+  #      legend.text = element_text(size = 9)) +
+  theme(legend.position = "none") +
+  scale_color_manual(values = cols2, name = "Interaction") 
+p <- ggExtra::ggMarginal(p, margins = "y", type = "histogram", size = 10)
+
+outFile <- file.path(outFolder, paste0("nicer_limma_adjPval_vs_phenopath_beta.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+cat(paste0("... written: ", outFile, "\n"))
 
 
 outFile <- file.path(outFolder, paste0("limma_logFC_vs_phenopath_beta.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(
   y=merged_dt$logFC,
-  x=df_beta$beta,
+  x=merged_dt$beta,
   pch=16,
   col=2+2*merged_dt$is_sig,
   cex.lab=1.2,

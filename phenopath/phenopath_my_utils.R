@@ -165,7 +165,10 @@ plot_iGeneExpr_gg2 <- function(igene, exprdt, pseudot, covarlab, valuedt,
     ggtitle(paste0("",gene_lab ), subtitle=paste0(subtit," (", round(valuedt[,paste0(valuecol)][igene], 3), ")"))+
     labs(fill="")+
     scale_fill_brewer(palette = "Set1") +
-    stat_smooth()+
+    # stat_smooth()+
+    ## taken from https://github.com/kieranrcampbell/phenopath_revisions/blob/master/analysis/brca_reanalysis/clvm_analysis.Rmd
+    stat_smooth(se = FALSE, method = "lm", size = 1.5, #formula = y ~ ns(x,3),
+                color = 'grey30') +
     theme(plot.title = element_text(hjust=0.5),
           plot.subtitle = element_text(hjust=0.5))
   return(p)

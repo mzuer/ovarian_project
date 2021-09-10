@@ -585,13 +585,18 @@ cat(paste0("... written: ", outFile, "\n"))
 selected_symbs <- c("ESR1", "FOXC1", "FBP1")
 gs="FOXC1"
 stopifnot(df_beta$gene == colnames(brca_data_filteredT))
+stopifnot(df_beta$gene %in% names(ens2genes))
+stopifnot(!duplicated(df_beta$gene))
+# if duplicated I would need to do some manual curation...
+df_beta$geneSymb <- ens2genes[df_beta$gene]
+
 for(gs in selected_symbs) {
   if(!gs %in% ens2genes) {
     cat(paste0("warning: ", gs, " not available\n"))
     next
   }
-  i_gs <- which(ens2genes==gs)
-  ens_gs <- names(ens2genes)[i_gs]
+  i_gs <- which(df_beta$geneSymb == gs)
+  ens_gs <- df_beta$gene[i_gs]
   stopifnot(length(i_gs) == 1)
   tmp_dt <- df_beta
   tmp_dt <- tmp_dt[order(abs(tmp_dt$beta), decreasing = TRUE),]
@@ -1195,11 +1200,14 @@ outFile <- file.path(outFolder, "DE_topTable.Rdata")
 save(DE_topTable, file=outFile)
 cat(paste0("... written: ", outFile, "\n"))
 
+stopifnot(!duplicated(merged_dt$gene))
+stopifnot(!duplicated(df_beta$gene))
+
 outFile <- file.path(outFolder, paste0("limma_adjPval_vs_phenopath_beta.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(
   y=-log10(merged_dt$adj.P.Val),
-  x=df_beta$beta,
+  x=merged_dt$beta,
   pch=16,
   col=2+2*merged_dt$is_sig,
   cex.lab=1.2,
@@ -1214,13 +1222,35 @@ legend("topright", legend=c("signif.", "not signif."),
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
+##### NICER WAY with colors as in 
+# https://github.com/kieranrcampbell/phenopath_revisions/blob/master/analysis/brca_reanalysis/clvm_analysis.Rmd
 
+
+cols <- RColorBrewer::brewer.pal(3, "Set2")
+cols2 <- c("#c5e2d9", cols[2])
+p <- ggplot(merged_dt, aes(x = beta, y =-log10(adj.P.Val), color = is_sig)) + 
+  geom_point() +
+  ylab(expression(paste("limma voom -", log[10], "(adj. P-value)"))) + 
+  xlab(expression(paste("Phenopath ", beta))) +
+  # theme(legend.position = 'top') +
+  geom_hline(yintercept = -log10(0.05), linetype = 2, alpha = 0.5) +
+  theme(axis.text = element_text(size = 9),
+        axis.title = element_text(size = 10)) +
+  #theme(legend.title = element_text(size = 10),
+  #      legend.text = element_text(size = 9)) +
+  theme(legend.position = "none") +
+  scale_color_manual(values = cols2, name = "Interaction") 
+p <- ggExtra::ggMarginal(p, margins = "y", type = "histogram", size = 10)
+
+outFile <- file.path(outFolder, paste0("nicer_limma_adjPval_vs_phenopath_beta.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+cat(paste0("... written: ", outFile, "\n"))
 
 outFile <- file.path(outFolder, paste0("limma_logFC_vs_phenopath_beta.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(
   y=merged_dt$logFC,
-  x=df_beta$beta,
+  x=merged_dt$beta,
   pch=16,
   col=2+2*merged_dt$is_sig,
   cex.lab=1.2,
@@ -1235,24 +1265,46 @@ legend("topright", legend=c("signif.", "not signif."),
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-##### TODO -> NICER WAY
+
+############## selected expression comparison  ##############
 
 
-cols <- RColorBrewer::brewer.pal(3, "Set2")
-cols2 <- c("#c5e2d9", cols[2])
-ggplot(df_limma, x =-log10(qval), aes(x = beta, y =-log10(qval), color = is_sig_graph)) + 
-  geom_point() +
-  ylab(expression(paste("Limma voom -", log[10], "(q-value)"))) + 
-  xlab(expression(paste("PhenoPath ", beta))) +
-  # theme(legend.position = 'top') +
-  geom_hline(yintercept = -log10(0.05), linetype = 2, alpha = 0.5) +
-  theme(axis.text = element_text(size = 9),
-        axis.title = element_text(size = 10)) +
-  #theme(legend.title = element_text(size = 10),
-  #      legend.text = element_text(size = 9)) +
-  theme(legend.position = "none") +
-  scale_color_manual(values = cols2, name = "Interaction") 
-limma_plot <- ggExtra::ggMarginal(last_plot(), margins = "y", type = "histogram", size = 10)
+# SNAI1 vs FBP1 expression supp fig18
+genesymb1 <- "FBP1"
+stopifnot(genesymb1 %in% ens2genes)
+gene_id1 <- names(ens2genes)[ens2genes == genesymb1]
+stopifnot(length(gene_id1) == 1)
+stopifnot(gene_id1 %in% rownames(brca_data_filtered))
+
+genesymb2 <- "SNAI1"
+stopifnot(genesymb %in% ens2genes)
+gene_id2 <- names(ens2genes)[ens2genes == genesymb2]
+stopifnot(length(gene_id2) == 1)
+stopifnot(gene_id2 %in% rownames(brca_data_filtered))
+
+plot_dt <- data.frame(t(brca_data_filtered[c(gene_id1,gene_id2),]))
+colnames(plot_dt) <- c("gene1", "gene2")
+stopifnot(rownames(plot_dt) == c(ERpos_samples, ERneg_samples))
+plot_dt$ERstat <- c(rep("ER+", nERpos), rep("ER-", nERneg))
+
+p <- ggplot(plot_dt, aes(x = gene1, y = gene2, color = ERstat)) +
+  geom_point(alpha = 0.6) +
+  theme(legend.position = "top") +
+  scale_color_brewer(palette = "Set1", name = "ER status") +
+  xlab("FBP1 expression "~log[2]~"(.+1)") + 
+  ylab(expression("SNAIL expression "~log[2]~"(.1)")) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 5))+
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 5))+
+  theme_bw()+
+  theme(legend.position = "top")# +
+# theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+# 
+
+outFile <- file.path(outFolder, paste0(genesymb2, "_vs_", genesymb1, "_expr.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+cat(paste0("... written: ", outFile, "\n"))
+
 
 
 ##################################################
@@ -1263,4 +1315,297 @@ stop("--ok\n")
 ####################################################################################################
 ### THRASH
 ####################################################################################################
+
+
+
+```
+
+Time for some reactome fun: NOT EVAL'D
+
+```{r reactome-time, eval = FALSE}
+pathways <- c("1643713", "1226099",
+              "2219528", "2644603",
+              "3304351", "4791275")
+id_to_name <- as.list(reactomePATHID2NAME)
+pathway_names <- id_to_name[pathways]
+pathways_to_genes <- as.list(reactomePATHID2EXTID)
+gene_list <- pathways_to_genes[pathways]
+pathway_names <- sapply(pathway_names, function(pn) {
+  gsub("Homo sapiens: ", "", pn)
+})
+names(gene_list) <- pathway_names
+mart <- useMart("ensembl", "hsapiens_gene_ensembl")
+to_ensembl <- function(gl) {
+  bm <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
+      filters = c("entrezgene"),
+      values = as.numeric(gl),
+      mart = mart)
+  return(bm$ensembl_gene_id)
+}
+gene_list_ensembl <- lapply(gene_list, to_ensembl)
+```
+
+And graph the results for various metrics:
+
+```{r graph-for-metrics, eval = FALSE, eval = FALSE}
+sce <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
+all_genes <- unique(unlist(gene_list_ensembl))
+all_genes <- all_genes[all_genes %in% rowData(sce)$ensembl_gene_id]
+mm <- match(all_genes, rowData(sce)$ensembl_gene_id)
+is_basal <- sce$PAM50_mRNA == "Basal-like"
+Y <- t(exprs(sce)[mm, ])
+colnames(Y) <- all_genes
+df_gex <- Y %>% 
+  as_data_frame() %>% 
+  dplyr::mutate(is_basal, z = colData(sce)[['tmap']]) %>% 
+  gather(gene, expression, -is_basal, -z)
+df_pheno <- bind_rows(
+  lapply(names(gene_list_ensembl), function(n) {
+    data_frame(pathway = n, gene = gene_list_ensembl[[n]])
+  })
+)
+df <- inner_join(df_gex, df_pheno, by = 'gene')
+df2 <- filter(df, !is.na(is_basal)) %>% 
+  group_by(gene, pathway, is_basal) %>% 
+  summarise(gex = mean(expression))
+df3 <- df %>% # filter(df, !is.na(is_basal)) %>% 
+  group_by(pathway, z) %>% 
+  summarise(gex = median(expression))
+ggplot(df3, aes(x = z, y = gex)) + 
+  geom_point(alpha = 0.7) + 
+  facet_wrap(~ pathway, scales = 'free_y') +
+  ylab("Median pathway expression") +
+  stat_smooth(color = 'red', se = F)
+df4 <- df %>% # filter(df, !is.na(is_basal)) %>% 
+  group_by(pathway, z) %>% 
+  summarise(gex = var(expression))
+# ggplot(df4, aes(x = z, y = gex)) + 
+#   geom_point(alpha = 0.7) + 
+#   facet_wrap(~ pathway, scales = 'free_y') +
+#   ylab("Variance in pathway expression") +
+#   stat_smooth(color = 'red', se = F)
+```
+
+
+
+
+
+# Crossover bit for chris
+
+```{r df-beta}
+df_beta <- mutate(df_beta,
+                  crossover = - alpha / beta)
+filter(df_beta, is_sig) %>% 
+  ggplot(aes(x = crossover)) + 
+  geom_histogram(fill = "#74a9cf", color = "grey90", bins = 30) +
+  xlab("Crossover point") + ylab("Number of genes") +
+  theme(axis.text = element_text(size = 9),
+        axis.title = element_text(size = 10))
+cross_plot <- last_plot()
+ggsave("../../figs/supplementary_crossover.png", width = 6, height = 5)
+```
+
+
+
+Crossover GO analysis:
+
+```{r crossover-go}
+library(goseq)
+genome <- "hg19"
+id <- "ensGene"
+all_genes <- rowData(sce)$ensembl_gene_id
+crossover_genes <- filter(df_beta, 
+                          is_sig & crossover > 0.4) %>% 
+  extract2("ensembl_gene_id") 
+crossg <- 1 * (all_genes %in% crossover_genes)
+names(crossg) <- all_genes
+pwfcross <- nullp(crossg, genome, id)
+gocross <- goseq(pwfcross, genome, id, test.cats = "GO:BP")
+pgo <- parse_go(gocross, "crossover", length(all_genes))
+```
+
+Crossover plots:
+
+```{r crossover-gene-plots}
+tmap <- pcavi$m_z
+cross_df <- dplyr::select(df_beta, gene, crossover, hgnc_symbol)
+top_genes <- dplyr::filter(df_beta, is_sig) %>% 
+  arrange(desc(abs(beta))) %>% 
+  extract2("gene") %>% head(n=12)
+df_gex <- t(exprs(sce))[, top_genes, drop=FALSE] %>% 
+  as_data_frame() %>% 
+  dplyr::mutate(phenotime = tmap, x = as.character(x)) %>% 
+  gather(gene, expression, -phenotime, -x)
+df_gex$x[is.na(df_gex$x)] <- "NA"
+df_gex$x <- plyr::mapvalues(df_gex$x, from = sort(unique(df_gex$x)), to = c("ER negative", "ER positive"))
+df_gex$x <- factor(df_gex$x, levels = c("ER negative", "ER positive"))
+df_gex <- inner_join(df_gex, cross_df, by = "gene")
+ggplot(df_gex, aes(x = phenotime, y = expression, color = x)) + 
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ hgnc_symbol, scales = "free_y", ncol = 3) + 
+  theme(legend.position = "top", strip.text.x = element_text(size = 9)) +
+  stat_smooth(se = FALSE, method = "lm", size = 2) + 
+  scale_color_brewer(name = "", palette = 'Set1') +
+  geom_vline(aes(xintercept = crossover), linetype = 2) +
+  xlab("Pathway score") +
+  ylab(expression(Expression ~ log[2] ~ "(TPM + 1)")) 
+# saveRDS(last_plot(), "../../figs/brca/crossover_thesis.rds")
+# 
+# ggsave("../../figs/supplementary_crossover_2.png", width = 10, height = 9)
+```
+
+
+
+# Plots for paper
+
+```{r more-vis}
+textinfo <- frame_data(
+  ~x, ~y, ~label,
+  0.6, 0.15, "Gene upregulated\nER+ increases upregulation",
+  0.6, -0.15, "Gene upregulated\nER+ decreases upregulation",
+  -0.7, 0.15, "Gene downregulated\nER+ decreases downregulation",
+  -0.7, -0.15, "Gene downregulated\nER+ increases downregulation"
+)
+cols <- RColorBrewer::brewer.pal(3, "Set2")
+cols2 <- c("#c5e2d9", cols[2])
+outline_cols = c("#c5e2d9", 'black')
+ggplot(df_beta, aes(x = c, y = beta)) + 
+  geom_point(shape = 21, aes(fill = is_sig_graph, color = is_sig_graph), alpha = 0.8) +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = 2, alpha = 0.5) +
+  scale_fill_manual(values = cols2, name = "Interaction") +
+  scale_color_manual(values = outline_cols, name = "Interaction") +
+  geom_text_repel(data = dplyr::filter(df_beta, is_sig, abs(beta) > 0.7),
+                 aes(label = hgnc_symbol), color = 'black',
+                 size = 3) +
+  ylab("Covariate-pseudotime interaction") +
+  xlab("Gene regulation over pseudotime") +
+  theme(legend.position = 'bottom',
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10)) +
+  geom_text(data = textinfo, aes(x = x, y = y, label = label), 
+            color = 'black', size = 3, fontface = "bold")
+lplot <- last_plot()
+lplot
+
+
+
+
+New heatmap plots:
+
+```{r, cache = FALSE}
+sce_gene <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
+sce_gene <- updateSCESet(sce_gene)
+sce_gene <- sce_gene[, colnames(sce)]
+angiogenesis_genes_all <- read_csv("../../data/BRCA/ag_hallmark_geneset.txt", skip = 2, col_names = FALSE)[[1]]
+df_beta <- mutate(df_beta, is_angiogenesis = hgnc_symbol %in% angiogenesis_genes_all)
+growth_factor_grep <- c("^FGF", "^VEGF", "^EGF", "^TGF")
+growth_factors <- unlist(lapply(growth_factor_grep, grep, rowData(sce)$hgnc_symbol, value = TRUE))
+growth_factors <- growth_factors[growth_factors != "EFGLAM"]
+df_beta <- mutate(df_beta, is_gf = hgnc_symbol %in% growth_factors)
+ag_to_plot <- filter(df_beta, is_gf) %>%
+  arrange(desc(c)) %>%
+  head(n = 10) %>%
+  .$hgnc_symbol
+ag_to_plot <- c(ag_to_plot, "VEGFC")
+ag_inds <- match(ag_to_plot, rowData(sce_gene)$hgnc_symbol)
+marker_mat <- t(exprs(sce_gene))[, ag_inds, drop=FALSE]
+colnames(marker_mat) <- ag_to_plot
+marker_df <-  marker_mat %>% 
+  as_data_frame() %>% 
+  dplyr::mutate(pseudotime = tmap)
+mx <- as.matrix(dplyr::select(marker_df, -pseudotime))
+d <- dist(t(mx))
+hc <- hclust(d)
+gene_order <- rev(colnames(mx)[hc$order])
+winsorize <- function(x, lower = -2.5, upper = 2.5) {
+  x[x < lower] <- lower
+  x[x > upper] <- upper
+  x
+}
+marker_df_2 <- mutate(marker_df, pseudotime_order = rank(pseudotime)) %>% 
+  gather(gene, expression, -pseudotime_order, -pseudotime)
+marker_df_2$gene <- factor(marker_df_2$gene, levels = gene_order)
+marker_df_2 <- group_by(marker_df_2, gene) %>% 
+  mutate(norm_expression = winsorize((expression - mean(expression)) / sd(expression)))
+ggplot(marker_df_2, aes(x = pseudotime_order, y = gene, fill = norm_expression)) +
+         geom_raster(interpolate = FALSE) +
+  scale_fill_viridis(name = "Expression\nz-score") +
+  theme(legend.position = "right",
+        axis.title.y = element_text(size = 10),
+        axis.text.y = element_text(size = 7, margin = margin(r = -0.5, l = 0, unit = "cm")),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 10, margin = margin(t = 0, unit = "cm")),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 9),
+        legend.direction = "vertical",
+        legend.margin = margin(l = -.5, unit = "cm")) +
+  labs(y = "Gene", x = "Pseudotime order")
+heatmap_plot <- last_plot()
+```
+
+
+
+
+
+
+# Demanding supervisor plots
+
+## Vascular growth factors
+
+```{r vasc-growth-fact}
+x_str <- plyr::mapvalues(x, from = sort(unique(x)),
+                         to = c("ER-", "ER+"))
+tmap <- sce$tmap
+vgf <- c("VEGFA", "VEGFB", "VEGFC", "VEGFD", "FGF2", "CXCL8") 
+mm <- match(vgf, rowData(sce_gene)$hgnc_symbol)
+vgf_exprs <- t(exprs(sce_gene)[mm, ]) %>% as_data_frame()
+names(vgf_exprs) <- vgf
+vgf_exprs <- mutate(vgf_exprs, z = tmap, ER_status = x_str)
+vgf_exprs_tidy <- gather(vgf_exprs, gene, expression, -z, -ER_status)
+ggplot(vgf_exprs_tidy, aes(x = z, y = expression, color = ER_status)) +
+  geom_point(alpha = 0.6) + facet_wrap(~ gene, scales = "free_y") +
+  xlab("Pathway score") + ylab("Expression") +
+  theme(legend.position = "top") +
+  scale_color_brewer(palette = "Set1", name = "ER status") 
+ggsave("../../figs/vgf_genes.png", width = 8, height = 6)
+```
+
+"Can we plot these brca genes?"
+
+```{r brca-genes}
+brca_genes <- c("CEP55", "ESR1", "FOXA1", "FOXC1", "KRT17", "MAPT", "MELK", "MMP11", "NAT1", "SFRP1", "UBE2C", "UBE2T")
+mm <- match(brca_genes, rowData(sce_gene)$hgnc_symbol)
+brca_exprs <- t(exprs(sce_gene)[mm, ]) %>% as_data_frame()
+names(brca_exprs) <- brca_genes
+brca_exprs <- mutate(brca_exprs, z = tmap, ER_status = x_str)
+brca_exprs_tidy <- gather(brca_exprs, gene, expression, -z, -ER_status)
+ggplot(brca_exprs_tidy, aes(x = z, y = expression, color = ER_status)) +
+  geom_point(alpha = 0.6) + facet_wrap(~ gene, scales = "free_y") +
+  xlab("Pathway score") + ylab("Expression") +
+  theme(legend.position = "top") +
+  scale_color_brewer(palette = "Set1", name = "ER status") 
+ggsave("../../figs/brca_genes.png", width = 9, height = 6)
+```
+
+"Can we look at FBP1 vs SNAIL expression?"
+
+```{r fbp1-vs-snail}
+genes <- c("FBP1", "SNAI1")
+mm <- match(genes, rowData(sce_gene)$hgnc_symbol)
+fs_exprs <- t(exprs(sce_gene)[mm, ]) %>% as_data_frame()
+names(fs_exprs) <- genes
+fs_exprs <- mutate(fs_exprs, ER_status = x_str)
+ggplot(fs_exprs, aes(x = FBP1, y = SNAI1, color = ER_status)) +
+  geom_point(alpha = 0.6) +
+  theme(legend.position = "top") +
+  scale_color_brewer(palette = "Set1", name = "ER status") +
+  xlab("FBP1 expression "~log[2]~"(TPM+1)") + 
+  ylab(expression("SNAIL expression "~log[2]~"(TPM+1)"))
+ggsave("../../figs/fbp1-vs-snail.png", width = 4, height = 4)
+```
 

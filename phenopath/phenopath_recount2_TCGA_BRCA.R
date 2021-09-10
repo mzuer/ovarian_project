@@ -1318,14 +1318,37 @@ stop("--ok\n")
 
 
 
-```
+############## survival analysis  ##############
+library(RTCGA)
+library(RTCGA.clinical)
 
-Time for some reactome fun: NOT EVAL'D
 
-```{r reactome-time, eval = FALSE}
+surv_dt <- survivalTCGA(BRCA.clinical, 
+                     extract.cols="admin.disease_code")
+# Show the first few lines
+head(surv_dt)
+
+tcga_annot_dt$lab_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_annot_dt$cgc_sample_id)
+stopifnot(tcga_annot_dt$lab_for_survival %in% surv_dt$bcr_patient_barcode)
+
+surv_dt <- surv_dt[surv_dt$bcr_patient_barcode %in% tcga_annot_dt$lab_for_survival,]
+stopifnot(nrow(surv_dt) == nrow(tcga_annot_dt))
+
+# add pseudotime info
+all_ptimes <- brca_pseudotimes
+stopifnot(rownames(brca_data_filteredT) == tcga_annot_dt$cgc_sample_id)
+names(all_ptimes) <- tcga_annot_dt$lab_for_survival
+
+# let’s run a Cox PH model
+# By default it’s going to treat breast cancer as the baseline, because alphabetically it’s first.
+
+
+
+
 pathways <- c("1643713", "1226099",
               "2219528", "2644603",
               "3304351", "4791275")
+pathways <- paste0("R-HSA-", pathways)
 id_to_name <- as.list(reactomePATHID2NAME)
 pathway_names <- id_to_name[pathways]
 pathways_to_genes <- as.list(reactomePATHID2EXTID)
@@ -1337,13 +1360,14 @@ names(gene_list) <- pathway_names
 mart <- useMart("ensembl", "hsapiens_gene_ensembl")
 to_ensembl <- function(gl) {
   bm <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
-      filters = c("entrezgene"),
+      filters = c("entrezgene_id"),
       values = as.numeric(gl),
       mart = mart)
   return(bm$ensembl_gene_id)
 }
 gene_list_ensembl <- lapply(gene_list, to_ensembl)
-```
+
+
 
 And graph the results for various metrics:
 

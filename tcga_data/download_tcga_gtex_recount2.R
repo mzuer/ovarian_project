@@ -16,8 +16,14 @@ dir.create(outFolder)
 
 tcga_purity_thresh <- 0.6 # cf Lucchetta et al. 2019
 
+compute_meds <- TRUE
+
+
 # update
 # no filter based on duplicated ensembl ID but remove the NA gene symbol (I guess might be the non-protein coding)
+
+
+# are tere all high grades ??????
 
 ############################################## 
 ############################################## prepare TCGA data
@@ -35,27 +41,190 @@ annot_cols <- c(grep("^cgc_", names(ovary_rec2_tcga_scaled@colData)), grep("^gdc
 tcgacols <- names(ovary_rec2_tcga_scaled@colData)[annot_cols]
 tcga_sampleAnnot <- data.frame(ovary_rec2_tcga_scaled@colData[, tcgacols])
 
+stopifnot(tcga_sampleAnnot[,"gdc_cases.project.name"] == "Ovarian Serous Cystadenocarcinoma")
+stopifnot(tcga_sampleAnnot[,"cgc_file_disease_type"] == "Ovarian Serous Cystadenocarcinoma")
+stopifnot(tcga_sampleAnnot[,"cgc_case_histological_diagnosis"] == "Serous Cystadenocarcinoma")
+stopifnot(tcga_sampleAnnot[,"cgc_file_experimental_strategy"] == "RNA-Seq")# 
 
-### PURITY FILTER FOR THE TUMOR SAMPLES
+
+####~~~ 1st FILTER HERE -> TAKE ONLY PRIMARY TUMOR !!!
+stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
+#*** update here
+tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$cgc_sample_sample_type == "Primary Tumor",]
+####~~~2nd ADDED FILTER -> discard FFPE samples
+# (seems to be a good practice, e.g.: https://www.biostars.org/p/308192/)
+stopifnot(tcga_sampleAnnot$cgc_sample_is_ffpe == ifelse(tcga_sampleAnnot$gdc_cases.samples.is_ffpe, "YES", "NO"))
+cat(paste0("... remove FFPE: ", sum(tcga_sampleAnnot$gdc_cases.samples.is_ffpe), "\n"))
+#*** update here
+tcga_sampleAnnot <- tcga_sampleAnnot[! tcga_sampleAnnot$gdc_cases.samples.is_ffpe,]
+stopifnot(nrow(tcga_sampleAnnot) > 0)
+#*** update here
+tcga_counts_raw_all <- tcga_counts_raw_all[,rownames(tcga_sampleAnnot)]
+stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
+
+
+###~~~3d FILTER - protein coding only? DO THIS BEFORE COMPUTING THE MEDIAN !  -> to remove the NA gene Symbols (non coding ???)
+# take the first symbol of the list... don't know how to do better...
+tcga_symbs <- sapply(data.frame(breast_rec2_tcga_scaled@rowRanges@elementMetadata)$symbol, function(x)x[[1]])
+tcga_ids <- as.character(data.frame(breast_rec2_tcga_scaled@rowRanges@elementMetadata)$gene_id)
+stopifnot(rownames(tcga_counts_raw_all) == tcga_ids)
+stopifnot(length(tcga_ids) == length(tcga_symbs))
+stopifnot(!duplicated(tcga_ids))
+
+gene_dt = data.frame(
+  geneSymb=tcga_symbs,
+  geneID=tcga_ids,
+  stringsAsFactors = FALSE
+)
+# I think lot of non coding no gene symb
+stopifnot(rownames(tcga_counts_raw_all) == gene_dt$geneID)
+cat(paste0("... filter NA gene symbols: ", sum(is.na(gene_dt$geneSymb)), "\n"))
+# 32511
+gene_dt <- gene_dt[!is.na(gene_dt$geneSymb),]
+stopifnot(gene_dt$geneID %in% rownames(tcga_counts_raw_all))
+#*** update here:
+tcga_counts_raw_all <- tcga_counts_raw_all[gene_dt$geneID,]
+stopifnot(!is.na(tcga_counts_raw_all))
+dim(tcga_counts_raw_all)
+
+
+####~~~ 4th FILTER:  PURITY FILTER FOR THE TUMOR SAMPLES - do this before removing duplicated ones !!!
 # taken from Lucchetta1 et al. 2019 https://bmccancer.biomedcentral.com/track/pdf/10.1186/s12885-019-5965-x
 # https://github.com/ELELAB/LUAD_LUSC_TCGA_comparison/blob/master/6-recount/unifiedLUAD_18062018.R
 # purityinfo.R.luad<-TCGAtumor_purity(tcga.barcodes, 0, 0, 0, 0, 0.6)
 
-tcga_sampleAnnot$labs_for_purity <- gsub("_rnaseq_fastq.tar","", tcga_sampleAnnot$cgc_filename)
-purityinfo_ov <-TCGAtumor_purity(tcga_sampleAnnot$labs_for_purity, 0, 0, 0, 0, tcga_purity_thresh)
+tcga_sampleAnnot$labs_for_purity <- tcga_sampleAnnot$cgc_sample_id
+purityinfo_brca <-TCGAtumor_purity(tcga_sampleAnnot$labs_for_purity, 0, 0, 0, 0, tcga_purity_thresh)
 #  $pure_barcodes attribute as a vector of pure samples and
 # $filtered attribute as filtered samples with no purity info
-stopifnot(is.null(purityinfo_ov$filtered)) # ensure all samples had purity info
-stopifnot(purityinfo_ov$pure_barcodes %in% tcga_sampleAnnot$labs_for_purity)
-nPureSamp <- length(purityinfo_ov$pure_barcodes)
+stopifnot(is.null(purityinfo_brca$filtered)) # ensure all samples had purity info
+stopifnot(purityinfo_brca$pure_barcodes %in% tcga_sampleAnnot$labs_for_purity)
+nPureSamp <- length(purityinfo_brca$pure_barcodes)
 cat(paste0("... samples to keep after purity filter (", tcga_purity_thresh, ") = ",
-           round(sum(tcga_sampleAnnot$labs_for_purity%in% purityinfo_ov$pure_barcodes )/nrow(tcga_sampleAnnot) * 100, 2)), " %\n")
-tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$labs_for_purity%in% purityinfo_ov$pure_barcodes,]
-tcga_counts_raw_all <- assays(ovary_rec2_tcga_scaled)$counts
-stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
-# keep only the ones that pass purity filter
-tcga_counts_raw_pF <- tcga_counts_raw_all[, colnames(tcga_counts_raw_all) %in% rownames(tcga_sampleAnnot)]
-stopifnot(ncol(tcga_counts_raw_pF) == nPureSamp)
+           round(sum(tcga_sampleAnnot$labs_for_purity%in% purityinfo_brca$pure_barcodes )/nrow(tcga_sampleAnnot) * 100, 2)), " %\n")
+# ... samples to keep after purity filter (0.6) = 84.83  %
+#*** update here
+# ~~~~ KEEP ONLY THE ONES THAT PASSED THE PURITY FILTER
+tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$labs_for_purity%in% purityinfo_brca$pure_barcodes,]
+stopifnot(tcga_sampleAnnot$cgc_sample_id %in% colnames(tcga_counts_raw_all))
+tcga_counts_raw_all <- tcga_counts_raw_all[,colnames(tcga_counts_raw_all) %in% tcga_sampleAnnot$cgc_sample_id]  
+stopifnot(!is.na(tcga_counts_raw_all))  
+# 5th filter -> e.g. ER status
+# not needed here
+
+
+###~~~ 6th FILTER: DUPLICATED SAMPLES
+###~~~ FILTER 6: KEEP MAX MEDS FOR DUPLICATED SAMPLES
+cat("any duplicated(tcga_sampleAnnot$cgc_sample_id)", "\n")
+cat(any(duplicated(tcga_sampleAnnot$cgc_sample_id)), "\n")
+# stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
+# this is not TRUE ! I have duplicated samples
+# see discussion here: https://www.biostars.org/p/311017/
+# when duplicated, I take the one with highest median value
+nGenesCheck <- nrow(tcga_counts_raw_all)
+withdup_count_dt <- as.data.frame(t(tcga_counts_raw_all))
+stopifnot(rownames(withdup_count_dt) == rownames(tcga_sampleAnnot))
+
+##### UPDATE -> they might be not only duplicated analytes, but also duplicated vials
+# I noticed it when doing survival analysis...
+###withdup_count_dt$samp_id <- tcga_sampleAnnot$cgc_sample_id
+###sum(duplicated(withdup_count_dt$samp_id))
+# [1] 23
+# check all should Solid Tumor; see https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes
+stopifnot(substr(start=14,stop=15,x=tcga_sampleAnnot$cgc_sample_id) %in% c("01"))# because filter primary tumor
+# update: could differ by vial
+tcga_sampleAnnot$id_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_sampleAnnot$cgc_sample_id)
+cat("any duplicated(tcga_sampleAnnot$id_for_survival)", "\n")
+cat(any(duplicated(tcga_sampleAnnot$id_for_survival)), "\n")
+head(colnames(tcga_counts_raw_all))
+head( tcga_sampleAnnot$id_for_survival)
+
+withdup_count_dt$samp_id <- tcga_sampleAnnot$id_for_survival
+sum(duplicated(withdup_count_dt$samp_id))
+
+nSampsCheck <- length(unique(withdup_count_dt$samp_id))
+dup_samples <- unique(withdup_count_dt$samp_id[duplicated(withdup_count_dt$samp_id)])
+
+if(compute_meds) {
+  no_dup_data <- withdup_count_dt[!withdup_count_dt$samp_id %in% dup_samples,]
+  
+  dup_data <- withdup_count_dt[withdup_count_dt$samp_id %in% dup_samples,]
+  stopifnot(length(unique(dup_data$samp_id)) == length(dup_samples))
+  ### !!! TODO
+  cat(paste0("compute median dup samples\n"))
+  dup_data_duprm <- do.call(rbind, by(dup_data, dup_data$samp_id, function(sub_dt) {
+    # each row = a sample, keep the sample that has highest median value
+    tmp_dt <- data.frame(sub_dt)
+    tmp_dt$samp_id <- NULL
+    tmp_dt <- log10(tmp_dt+1)
+    stopifnot(!is.na(tmp_dt))
+    stopifnot(ncol(tmp_dt) == ncol(dup_data)-1)
+    stopifnot(nrow(tmp_dt) == nrow(sub_dt))
+    save(tmp_dt, file="tmp_dt.Rdata")
+    cat(paste0("written\n"))
+    all_meds <- apply(tmp_dt, 1, median)
+    all_meds <- rowMedians(as.matrix(tmp_dt))
+    stopifnot(length(all_meds) == nrow(sub_dt))
+    stopifnot(!is.na(all_meds))
+    to_keep <- which.max(all_meds)
+    stopifnot(length(to_keep) == 1)
+    # need this hack otherwise rownames will be samp_id
+    out_dt <- sub_dt[to_keep,, drop=FALSE]
+    out_dt$full_id <- rownames(sub_dt)[to_keep]
+    out_dt
+  }))
+  # need this hack otherwise rownames will be samp_id (because of by())
+  stopifnot(!duplicated(dup_data_duprm$full_id))
+  rownames(dup_data_duprm) <- dup_data_duprm$full_id
+  dup_data_duprm$full_id <- NULL
+  stopifnot(nrow(dup_data_duprm) == length(dup_samples))
+  stopifnot(!duplicated(dup_data_duprm$samp_id))
+  cat(paste0("... ok meds\n"))
+  
+  stopifnot(colnames(dup_data_duprm) == colnames(no_dup_data))
+  
+  new_tcga_counts_raw_all <- rbind(dup_data_duprm, no_dup_data)
+  new_tcga_counts_raw_all$samp_id <- NULL
+  new_tcga_counts_raw_all <- t(new_tcga_counts_raw_all)
+  stopifnot(rownames(new_tcga_counts_raw_all) == rownames(tcga_counts_raw_all))
+  stopifnot(colnames(new_tcga_counts_raw_all) %in% colnames(tcga_counts_raw_all))
+  outFile <- file.path(outFolder,"new_tcga_counts_raw_all.Rdata" )
+  save(new_tcga_counts_raw_all, file=outFile)
+  cat(paste0("... written: ", outFile, "\n"))
+} else {
+  outFile <- file.path(outFolder,"new_tcga_counts_raw_all.Rdata" )
+  new_tcga_counts_raw_all <- get(load(outFile))
+}
+
+
+##*** update the count data
+tcga_counts_raw_all <- new_tcga_counts_raw_all
+
+stopifnot(nrow(tcga_counts_raw_all) == nGenesCheck) 
+stopifnot(ncol(tcga_counts_raw_all) == nSampsCheck) 
+
+##*** update annot data
+stopifnot(colnames(tcga_counts_raw_all)%in% rownames(tcga_sampleAnnot))
+tcga_sampleAnnot <- tcga_sampleAnnot[colnames(tcga_counts_raw_all),] 
+stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
+stopifnot(!duplicated(tcga_sampleAnnot$id_for_survival))
+stopifnot(colnames(tcga_counts_raw_all) == rownames(tcga_sampleAnnot))
+
+tcga_counts_all <- tcga_counts_raw_all
+stopifnot(tcga_counts_all >= 0)
+
+stopifnot(rownames(tcga_counts_all) == gene_dt$geneID)
+stopifnot(nrow(tcga_counts_all) == nrow(gene_dt))
+stopifnot(colnames(tcga_counts_all) == c(ERpos_samples, ERneg_samples))
+stopifnot(ncol(tcga_counts_all) == nERneg+nERpos)
+
+stopifnot(colnames(tcga_counts_all) == rownames(tcga_sampleAnnot))
+stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))
+stopifnot(!duplicated(tcga_sampleAnnot$id_for_survival))
+colnames(tcga_counts_all) <- tcga_sampleAnnot$cgc_sample_id
+
+stopifnot(substr(start=1,stop=12,x=colnames(tcga_counts_all)) == tcga_sampleAnnot$id_for_survival)
+
 
 ############################################## 
 ############################################## prepare GTEX data
@@ -79,13 +248,16 @@ rownames(gtex_sampleAnnot) <- rownames(gtex_sampleAnnot_tmp)
 gtex_counts_all <- assays(ovary_rec2_gtex_scaled)$counts
 stopifnot(gtex_counts_all >= 0)
 
-# for tcga -> takes the one filtered
-tcga_counts_all <- tcga_counts_raw_pF
-stopifnot(tcga_counts_all >= 0)
 
 # take the first symbol of the list... don't know how to do better...
 tcga_symbs <- sapply(data.frame(ovary_rec2_tcga_scaled@rowRanges@elementMetadata)$symbol, function(x)x[[1]])
 tcga_ids <- as.character(data.frame(ovary_rec2_tcga_scaled@rowRanges@elementMetadata)$gene_id)
+# need add it here because now I do the protein coding filter earlier (filter 3)
+stopifnot(gene_dt$geneSymb %in% tcga_symbs)
+stopifnot(gene_dt$geneID %in% tcga_ids)
+tcga_symbs <- tcga_symbs[tcga_symbs %in% gene_dt$geneSymb]
+tcga_ids <- tcga_symbs[tcga_symbs %in% gene_dt$geneID]
+
 stopifnot(rownames(tcga_counts_all) == tcga_ids)
 stopifnot(length(tcga_ids) == length(tcga_symbs))
 stopifnot(!duplicated(tcga_ids))

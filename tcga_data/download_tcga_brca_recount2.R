@@ -21,6 +21,8 @@ tcga_purity_thresh <- 0.6 # cf Lucchetta et al. 2019
 
 compute_meds <- FALSE
 
+checkGene <- "ENSG00000124216"
+
 ############################################## 
 ############################################## prepare TCGA data
 ############################################## 
@@ -29,7 +31,7 @@ compute_meds <- FALSE
 breast_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "breast")
 breast_rec2_tcga_scaled <- scale_counts(breast_rec2_tcga$tcga_breast)
 tcga_counts_raw_all <- assays(breast_rec2_tcga_scaled)$counts
-
+cat(paste0("--- check gene - raw: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
 
 stopifnot(breast_rec2_tcga_scaled@colData[,"cgc_case_primary_site"] == "Breast")
 annot_cols <- c(grep("^cgc_", names(breast_rec2_tcga_scaled@colData)), grep("^gdc_", names(breast_rec2_tcga_scaled@colData)))
@@ -77,6 +79,8 @@ tcga_counts_raw_all <- tcga_counts_raw_all[,rownames(tcga_sampleAnnot)]  # filte
 stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
 cat(paste0(dim(tcga_counts_raw_all), "\n"))
 
+cat(paste0("--- check gene - filt1+2: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
+
 ###~~~3d FILTER - protein coding only? DO THIS BEFORE COMPUTING THE MEDIAN !  -> to remove the NA gene Symbols (non coding ???)
 # take the first symbol of the list... don't know how to do better...
 tcga_symbs <- sapply(data.frame(breast_rec2_tcga_scaled@rowRanges@elementMetadata)$symbol, function(x)x[[1]])
@@ -90,6 +94,7 @@ gene_dt = data.frame(
   geneID=tcga_ids,
   stringsAsFactors = FALSE
 )
+
 # I think lot of non coding no gene symb
 stopifnot(rownames(tcga_counts_raw_all) == gene_dt$geneID)
 cat(paste0("... filter NA gene symbols: ", sum(is.na(gene_dt$geneSymb)), "\n"))
@@ -102,6 +107,8 @@ tcga_counts_raw_all <- tcga_counts_raw_all[gene_dt$geneID,]
 stopifnot(!is.na(tcga_counts_raw_all))
 cat(paste0(dim(tcga_counts_raw_all), "\n"))
 #[1] 25526  1127
+
+cat(paste0("--- check gene - filter prot cod: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
 
 ####~~~ 4th FILTER:  PURITY FILTER FOR THE TUMOR SAMPLES - do this before removing duplicated ones !!!
 # taken from Lucchetta1 et al. 2019 https://bmccancer.biomedcentral.com/track/pdf/10.1186/s12885-019-5965-x
@@ -122,6 +129,9 @@ cat(paste0("... samples to keep after purity filter (", tcga_purity_thresh, ") =
 # ~~~~ KEEP ONLY THE ONES THAT PASSED THE PURITY FILTER
 cat(paste0("... filter 4 - purity: ", length(purityinfo_brca$pure_barcodes), "/", nrow(tcga_sampleAnnot), "\n"))
 tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$labs_for_purity%in% purityinfo_brca$pure_barcodes,]
+
+cat(paste0("--- check gene - filt4: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
+
 
 ###~~~ 5th FILTER: ER STATUS FILTER
 ###*# retrieve ER+ ER- status
@@ -167,6 +177,9 @@ tcga_sampleAnnot <- tcga_sampleAnnot[c(ERpos_samples, ERneg_samples),]
 tcga_counts_raw_all <- tcga_counts_raw_all[,c(ERpos_samples, ERneg_samples)]  # filter also filter 4
 stopifnot(!is.na(tcga_counts_raw_all))  
 cat(paste0(dim(tcga_counts_raw_all), "\n"))
+
+cat(paste0("--- check gene - filt5: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
+
 
 ###~~~ FILTER 6: KEEP MAX MEDS FOR DUPLICATED SAMPLES
 cat("any duplicated(tcga_sampleAnnot$cgc_sample_id)", "\n")
@@ -254,6 +267,7 @@ cat(paste0("... filter 6 - dup samples: ",ncol(new_tcga_counts_raw_all), "/", nc
 ##*** update the count data
 tcga_counts_raw_all <- new_tcga_counts_raw_all
 cat(paste0(dim(tcga_counts_raw_all), "\n"))
+cat(paste0("--- check gene - filt6: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
 
 stopifnot(nrow(tcga_counts_raw_all) == nGenesCheck) 
 stopifnot(ncol(tcga_counts_raw_all) == nSampsCheck) 

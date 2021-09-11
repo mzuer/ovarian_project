@@ -17,6 +17,9 @@ require(goseq)
 require(mclust)
 require(ggExtra)
 require(ReactomePA)
+require(reactome.db)
+require(AnnotationDbi)
+require(org.Hs.eg.db)
 
 genome <- "hg19"
 id <- "ensGene"
@@ -36,8 +39,8 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-runPheno <- F
-runNorm <- FALSE
+runPheno <- TRUE
+runNorm <- TRUE
 
 
 plotType <- "png"
@@ -95,22 +98,31 @@ for(mygene in tocheckgenes) {
   cat(paste0("written ... ", outFile, "\n"))  
 }
 
+cat(paste0("... grep brca_data_raw"))              
+grep("ENSG00000124216", rownames(brca_data_raw))
+
+
 httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ensembl biomart connection
 tokeep <- ! grepl("_PAR_Y$", rownames(brca_data_raw))
 cat(paste0("... remove weird genes: ", sum(!tokeep), "/", length(tokeep), "\n"))
 brca_data_raw <- brca_data_raw[tokeep,]
 stopifnot(!duplicated(gsub("\\..*", "",rownames(brca_data_raw))))
 rownames(brca_data_raw)<-gsub("\\..*", "",rownames(brca_data_raw))
-              # get list of all protein-coding genes
-              mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
-              listOfGenes <- getBM(attributes = c("ensembl_gene_id","hgnc_symbol", "gene_biotype"),
-                                   filters = c("biotype"),values = list(biotype="protein_coding"), mart = mart)
-              head(listOfGenes)
-              dim(listOfGenes)
+# get list of all protein-coding genes
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+listOfGenes <- getBM(attributes = c("ensembl_gene_id","hgnc_symbol", "gene_biotype"),
+                     filters = c("biotype"),values = list(biotype="protein_coding"), mart = mart)
+head(listOfGenes)
+dim(listOfGenes)
 
-              brca_data_forNorm <- subset(brca_data_raw,rownames(brca_data_raw) %in% listOfGenes$ensembl_gene_id)
-              dim(brca_data_forNorm)
+brca_data_forNorm <- subset(brca_data_raw,rownames(brca_data_raw) %in% listOfGenes$ensembl_gene_id)
+dim(brca_data_forNorm)
 # [1] 19177   533
+
+cat(paste0("... grep brca_data_forNorm"))              
+grep("ENSG00000124216", rownames(brca_data_forNorm))
+
+geneIDs_beforeNorm <- rownames(brca_data_forNorm)
 
 ### normalize as in Lucchetta et al. 2019
 if(runNorm) {
@@ -124,6 +136,19 @@ if(runNorm) {
   outFile <- file.path(outFolder, "brca_data_gcNorm.Rdata")
   brca_dat_gcNorm <- get(load(outFile))
 }
+cat(paste0("... grep brca_dat_gcNorm"))              
+grep("ENSG00000124216", rownames(brca_dat_gcNorm))
+
+# the function reorder the gene...
+# reput in same order (just to be sure)
+geneIDs_afterNorm <- rownames(brca_dat_gcNorm)
+stopifnot(geneIDs_afterNorm %in% geneIDs_beforeNorm)
+kept_genes <- geneIDs_beforeNorm[geneIDs_beforeNorm %in% geneIDs_afterNorm]
+stopifnot(setequal(kept_genes, rownames(brca_dat_gcNorm)))
+stopifnot(length(kept_genes) == nrow(brca_dat_gcNorm))
+brca_dat_gcNorm <- brca_dat_gcNorm[kept_genes,]
+cat(paste0("... grep brca_dat_gcNorm reordererd"))              
+grep("ENSG00000124216", rownames(brca_dat_gcNorm))
 
 brca_data_gcNorm_log <- log2(brca_dat_gcNorm + 1)
 
@@ -247,6 +272,10 @@ cat(paste0("... written: ", outFile, "\n"))
 # For input to PhenoPath we used the 4,579 genes whose variance in log(TPM+1)
 # expression was greater than 1 and whose median absolute deviation was greater than 0
 
+
+cat(paste0("... grep brca_data_gcNorm_log"))              
+grep("ENSG00000124216", rownames(brca_data_gcNorm_log))
+
 var_exprs <- rowVars(brca_data_gcNorm_log)
 mad_exprs <- rowMads(brca_data_gcNorm_log)
 to_keep <-  var_exprs > var_thresh & mad_exprs > mad_thresh
@@ -275,13 +304,21 @@ cat(paste0("... written: ", outFile, "\n"))
 
 nGenes <- sum(to_keep)
 
+brca_data_notFiltered <- brca_data_gcNorm_log
 brca_data_gcNorm_log <- brca_data_gcNorm_log[to_keep,]
 cat(paste0("... keep highly variable genes ", nrow(brca_data_gcNorm_log), "/", length(to_keep), "\n"))
+
+cat(paste0("... grep brca_data_gcNorm_log"))              
+grep("ENSG00000124216", rownames(brca_data_gcNorm_log))
+
 
 brca_data_filtered <- brca_data_gcNorm_log
 outFile <- file.path(outFolder, paste0("brca_data_filtered.Rdata"))
 save(brca_data_filtered, file=outFile)
 cat(paste0("... written: ", outFile, "\n"))
+
+# stop("--ok\n")
+# SNAI did not pass the filter
 
 
 ################################### 
@@ -556,8 +593,6 @@ p <- plot_iGeneExpr_gg2(igene= which.max(df_beta$beta),
 outFile <- file.path(outFolder, paste0("highestBetaGene_expr_along_pseudotime_gg2.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
-
-
 
 p <- plot_iGeneExpr(igene= which.min(df_beta$beta),
                exprdt=brca_data_filteredT,
@@ -917,7 +952,7 @@ outFile <- file.path(outFolder, paste0("genes_with_top_and_bottom_n", nTop, "_la
 ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
-############## PC dots with color-coded by pseudotime gradient ##############
+############## PC dots with color-coded by pseudotime gradient ##############  <<<<<<<<<<<<<<< FIG 6a
 
 myconds <- ifelse(rownames(pca_brca_lowrepr) %in% ERpos_samples, "ER+", 
                   ifelse(rownames(pca_brca_lowrepr) %in% ERneg_samples, "ER-", NA))
@@ -944,8 +979,20 @@ outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_ERpos_
 ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
-############## gene set enrichment on top and bottom beta value genes ##############
+############## gene set enrichment on top and bottom beta value genes ##############  <<<<<<<<<<<<<<< FIG 6c
+# A GO enrichment analysis indicated that the genes driving the inferred pseudotemporal trajectory 
+# were indeed enriched for vascular growth pathways (Fig. 6c).
+# -> how is "driving" defined ???  is it with all genes ???
 
+# from the code https://github.com/kieranrcampbell/phenopath_analyses/blob/058fbd77dea3be6de03bf57a319d272a0eb15c64/analysis/BRCA/clvm_analysis.Rmd
+# https://github.com/kieranrcampbell/phenopath_revisions/blob/2c52ed25cedb0abb49465e6bf71b1b25640fd068/analysis/brca_reanalysis/clvm_analysis.Rmd
+# https://github.com/kieranrcampbell/phenopath_analyses/blob/058fbd77dea3be6de03bf57a319d272a0eb15c64/analysis/BRCA/clvm_analysis_er_pos.Rmd
+upreg_genes <- filter(cdf, correlation > 0.5) %>% extract2("feature") 
+downreg_genes <- filter(cdf, correlation < -0.5) %>% extract2("feature")
+gos <- bind_rows(
+  parse_go(goup, "Up-regulated", length(upreg_genes)),
+  parse_go(godown, "Down-regulated", length(downreg_genes))
+)
 
 # A GO enrichment analysis of the genes upregulated along pseudotime whose upregulation was increased by LPS stimulation
 # showed enrichment for immune system processes.
@@ -1272,39 +1319,77 @@ cat(paste0("... written: ", outFile, "\n"))
 
 # SNAI1 vs FBP1 expression supp fig18
 genesymb1 <- "FBP1"
-stopifnot(genesymb1 %in% ens2genes)
-gene_id1 <- names(ens2genes)[ens2genes == genesymb1]
-stopifnot(length(gene_id1) == 1)
-stopifnot(gene_id1 %in% rownames(brca_data_filtered))
-
 genesymb2 <- "SNAI1"
-stopifnot(genesymb %in% ens2genes)
-gene_id2 <- names(ens2genes)[ens2genes == genesymb2]
-stopifnot(length(gene_id2) == 1)
-stopifnot(gene_id2 %in% rownames(brca_data_filtered))
 
-plot_dt <- data.frame(t(brca_data_filtered[c(gene_id1,gene_id2),]))
-colnames(plot_dt) <- c("gene1", "gene2")
-stopifnot(rownames(plot_dt) == c(ERpos_samples, ERneg_samples))
-plot_dt$ERstat <- c(rep("ER+", nERpos), rep("ER-", nERneg))
+if(genesymb2 %in% ens2genes & genesymb1 %in% ens2genes) {
+  stopifnot(genesymb1 %in% ens2genes)
+  gene_id1 <- names(ens2genes)[ens2genes == genesymb1]
+  stopifnot(length(gene_id1) == 1)
+  stopifnot(gene_id1 %in% rownames(brca_data_filtered))
+  
+  stopifnot(genesymb2 %in% ens2genes)
+  gene_id2 <- names(ens2genes)[ens2genes == genesymb2]
+  stopifnot(length(gene_id2) == 1)
+  stopifnot(gene_id2 %in% rownames(brca_data_filtered))
+  
+  plot_dt <- data.frame(t(brca_data_filtered[c(gene_id1,gene_id2),]))
+  colnames(plot_dt) <- c("gene1", "gene2")
+  stopifnot(rownames(plot_dt) == c(ERpos_samples, ERneg_samples))
+  plot_dt$ERstat <- c(rep("ER+", nERpos), rep("ER-", nERneg))
+  
+  p <- ggplot(plot_dt, aes(x = gene1, y = gene2, color = ERstat)) +
+    geom_point(alpha = 0.6) +
+    theme(legend.position = "top") +
+    scale_color_brewer(palette = "Set1", name = "ER status") +
+    xlab("FBP1 expression "~log[2]~"(.+1)") + 
+    ylab(expression("SNAIL expression "~log[2]~"(.1)")) +
+    scale_x_continuous(breaks = scales::pretty_breaks(n = 5))+
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 5))+
+    theme_bw()+
+    theme(legend.position = "top")# +
+  # theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+  #         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+  # 
+  
+  outFile <- file.path(outFolder, paste0(genesymb2, "_vs_", genesymb1, "_expr_filtered_data.", plotType))
+  ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+  cat(paste0("... written: ", outFile, "\n"))
+  
+}  else {
+  stopifnot(genesymb1 %in% ens2genes)
+  gene_id1 <- names(ens2genes)[ens2genes == genesymb1]
+  stopifnot(length(gene_id1) == 1)
+  stopifnot(gene_id1 %in% rownames(brca_data_notFiltered))
+  
+  stopifnot(genesymb2 %in% ens2genes)
+  gene_id2 <- names(ens2genes)[ens2genes == genesymb2]
+  stopifnot(length(gene_id2) == 1)
+  stopifnot(gene_id2 %in% rownames(brca_data_notFiltered))
+  
+  plot_dt <- data.frame(t(brca_data_notFiltered[c(gene_id1,gene_id2),]))
+  colnames(plot_dt) <- c("gene1", "gene2")
+  stopifnot(rownames(plot_dt) == c(ERpos_samples, ERneg_samples))
+  plot_dt$ERstat <- c(rep("ER+", nERpos), rep("ER-", nERneg))
+  
+  p <- ggplot(plot_dt, aes(x = gene1, y = gene2, color = ERstat)) +
+    geom_point(alpha = 0.6) +
+    theme(legend.position = "top") +
+    scale_color_brewer(palette = "Set1", name = "ER status") +
+    xlab("FBP1 expression "~log[2]~"(.+1)") + 
+    ylab(expression("SNAIL expression "~log[2]~"(.1)")) +
+    scale_x_continuous(breaks = scales::pretty_breaks(n = 5))+
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 5))+
+    theme_bw()+
+    theme(legend.position = "top")# +
+  # theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+  #         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+  # 
+  
+  outFile <- file.path(outFolder, paste0(genesymb2, "_vs_", genesymb1, "_expr_notFiltered_data.", plotType))
+  ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+  cat(paste0("... written: ", outFile, "\n"))
+}
 
-p <- ggplot(plot_dt, aes(x = gene1, y = gene2, color = ERstat)) +
-  geom_point(alpha = 0.6) +
-  theme(legend.position = "top") +
-  scale_color_brewer(palette = "Set1", name = "ER status") +
-  xlab("FBP1 expression "~log[2]~"(.+1)") + 
-  ylab(expression("SNAIL expression "~log[2]~"(.1)")) +
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5))+
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5))+
-  theme_bw()+
-  theme(legend.position = "top")# +
-# theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-#         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
-# 
-
-outFile <- file.path(outFolder, paste0(genesymb2, "_vs_", genesymb1, "_expr.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
-cat(paste0("... written: ", outFile, "\n"))
 
 
 
@@ -1386,14 +1471,134 @@ ggsurvplot_facet(fit2, data = surv_dt, facet.by="ER_status",risk.table = FALSE)+
 
 
 ############## REACTOME PATHWAY ENRICHMENT analysis  ##############
+# *a pathway enrichment analysis using Reactome to discover whether any of the top 20 interacting genes (by β value) *
+# not sure if take absolute beta in the article ??
+# brca_data_filtered <- get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_data_filtered.Rdata"))
+# brca_data_filteredT <- t(brca_data_filtered)
+# brca_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_phenopath_fit.Rdata"))
+
+gene_names <- colnames(brca_data_filteredT)
+df_beta <- data.frame(beta = interaction_effects(brca_phenopath_fit),
+                      beta_sd = interaction_sds(brca_phenopath_fit),
+                      is_sig = significant_interactions(brca_phenopath_fit),
+                      gene = gene_names)
+
+###### FIRST WAY TO GET MATCHING IDS
+# mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+listOfGenes_entrez <- getBM(attributes = c("entrezgene_id", "ensembl_gene_id", "gene_biotype"),
+                     filters = c("biotype"),values = list(biotype="protein_coding"), mart = mart)
+dim(listOfGenes_entrez)
+# [1] 23069     3
+stopifnot(df_beta$gene %in% listOfGenes_entrez$ensembl_gene_id)
+listOfGenes_entrez <- listOfGenes_entrez[listOfGenes_entrez$ensembl_gene_id %in% df_beta$gene,]
+dim(listOfGenes_entrez)
+# [1] 6005    3
+listOfGenes_entrez <- listOfGenes_entrez[!is.na(listOfGenes_entrez$entrezgene_id),]
+dim(listOfGenes_entrez)
+# 5982 3
+# I need to have unique ensemblID
+listOfGenes_entrez <- listOfGenes_entrez[!duplicated(listOfGenes_entrez$ensembl_gene_id),]
+dim(listOfGenes_entrez)
+# [1] 5982 3
+any(duplicated(listOfGenes_entrez$entrezgene_id))
+# TRUE
+stopifnot(!duplicated(listOfGenes_entrez$ensembl_gene_id))
+stopifnot(!is.na(listOfGenes_entrez$ensembl_gene_id))
+listOfGenes_entrez1 <- setNames(listOfGenes_entrez$entrezgene_id, listOfGenes_entrez$ensembl_gene_id)
+stopifnot(!is.na(listOfGenes_entrez1))
+
+###### 2ND WAY TO GET MATCHING IDS
+#columns(org.Hs.eg.db) # returns list of available keytypes
+listOfGenes_entrez2 <- mapIds(org.Hs.eg.db,
+                     keys=df_beta$gene, #Column containing Ensembl gene ids
+                     column="ENTREZID",
+                     keytype="ENSEMBL",
+                     multiVals="first")
+listOfGenes_entrez2 <- listOfGenes_entrez2[!is.na(listOfGenes_entrez2)]
+stopifnot(!is.na(listOfGenes_entrez2))
+length(listOfGenes_entrez2)
+# 5996
+any(duplicated(listOfGenes_entrez2))
+# TRUE # also duplicated entrez
+
+stopifnot(names(listOfGenes_entrez1) %in% df_beta$gene)
+stopifnot(names(listOfGenes_entrez2) %in% df_beta$gene)
+stopifnot(!is.na(listOfGenes_entrez2))
+stopifnot(!is.na(listOfGenes_entrez1))
+
+# if one is longer, take the longest, otherwise take the one with least duplicated entrezIDs (less ambiguous)
+if(length(listOfGenes_entrez1) != length(listOfGenes_entrez2)) {
+  if(length(listOfGenes_entrez1) > length(listOfGenes_entrez2)) {
+    ens2entrez <- listOfGenes_entrez1
+    cat(paste0("... take list 1\n"))
+  } else {
+    ens2entrez <- listOfGenes_entrez2
+    cat(paste0("... take list 2\n"))
+  }
+} else {
+  if(length(unique(listOfGenes_entrez1)) > length(unique(listOfGenes_entrez2))) {
+    ens2entrez <- listOfGenes_entrez1
+    cat(paste0("... take list 1\n"))
+  } else { # if == take list 2 (do not know better way)
+    ens2entrez <- listOfGenes_entrez2
+    cat(paste0("... take list 2\n"))
+  }
+}
+cat(paste0("av. genes with matched entrez ID:", length(ens2entrez), "/", nrow(df_beta), "\n"))
+cat(paste0("# duplicated entrezIDs: ", sum(duplicated(ens2entrez)), "\n"))
+
+df_beta_entrez <- df_beta[df_beta$gene %in% names(ens2entrez),]
+stopifnot(paste0(df_beta_entrez$gene) %in% names(ens2entrez))
+df_beta_entrez$gene_entrez <- ens2entrez[paste0(df_beta_entrez$gene)]
+stopifnot(!is.na(df_beta_entrez))
+
+top20_posbeta <- df_beta_entrez[order(df_beta_entrez$beta, decreasing = TRUE),][1:20,"gene_entrez"]
+
+top20_negbeta <- df_beta_entrez[order(df_beta_entrez$beta, decreasing = FALSE),][1:20,"gene_entrez"]
+
+top20_absbeta <- df_beta_entrez[order(abs(df_beta_entrez$beta), decreasing = TRUE),][1:20,"gene_entrez"]
+
+# will not use the cutoff because no one signif, but still want to look at the top ones
+# reactome_pvaluecutoff <- 0.05
+# from here: https://www.biostars.org/p/434669/
+# seems ok to leave universe param out
+cat(paste0("... run Reactome PA\n"))
+top_pos_React <- enrichPathway(gene=top20_posbeta, pvalueCutoff = 1 , readable=TRUE)
+top_neg_React <- enrichPathway(gene=top20_negbeta, pvalueCutoff = 1 , readable=TRUE)
+top_abs_React <- enrichPathway(gene=top20_absbeta, pvalueCutoff = 1 , readable=TRUE)
+cat(paste0("...... finished\n"))
+
+# geneRatio = ratio of input genes that are annotated in a term
+# BgRatio = ratio of all genes that are annotated in this term
+# https://www.sciencedirect.com/science/article/pii/S2666675821000667
+# fold enrichment = defined as the ratio of the frequency of input genes annotated in a term to the frequency
+# of all genes annotated to that term, and it is easy to calculate by dividing geneRatio by BgRatio
+# 
+# Let is suppose I have a collection of genesets called : HALLMARK
+# Now let is suppose there is a specific geneset there called: E2F_targets
+# 
+# BgRatio = M/N.
+# 
+# M = size of the geneset (eg size of the E2F_targets); 
+# (# of genes within that distribution that are annotated (either directly or indirectly) to the node of interest
+#   # of genes from the universe annotated to gene set
+# 
+# N = size of all of the unique genes in the collection of genesets (example the HALLMARK collection);
+# # (is the total number of genes in the background distribution (universe)
+# 
+#  GeneRatio is k/n.
+# k = size of the overlap of 'a vector of gene id' you input with the specific geneset (eg E2F_targets),
+# only unique genes; (the number of genes within that list n, which are annotated to the node.
+#                                                                                                                                                                                                                                  
+# n = size of the overlap of 'a vector of gene id' you input with all the members of 
+# the collection of genesets (eg the HALLMARK collection),only unique genes;
+# is the size of the list of genes of interest 
+
+# BgRatio = M/N => size given set set/size universe
+# GeneRatio = k/n => # input genes in a given set/# input genes in universe
 
 
-
-
-
-
-
-
+### look at the pathways they looked at
 pathways <- c("1643713", "1226099",
               "2219528", "2644603",
               "3304351", "4791275")
@@ -1405,17 +1610,23 @@ gene_list <- pathways_to_genes[pathways]
 pathway_names <- sapply(pathway_names, function(pn) {
   gsub("Homo sapiens: ", "", pn)
 })
-names(gene_list) <- pathway_names
-mart <- useMart("ensembl", "hsapiens_gene_ensembl")
-to_ensembl <- function(gl) {
-  bm <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
-      filters = c("entrezgene_id"),
-      values = as.numeric(gl),
-      mart = mart)
-  return(bm$ensembl_gene_id)
-}
-gene_list_ensembl <- lapply(gene_list, to_ensembl)
+# R-HSA-1643713                                      R-HSA-1226099 
+# "Signaling by EGFR in Cancer"                     "Signaling by FGFR in disease" 
+# R-HSA-2219528                                      R-HSA-2644603 
+# "PI3K/AKT Signaling in Cancer"                    "Signaling by NOTCH1 in Cancer" 
+# R-HSA-3304351                                      R-HSA-4791275 
+# "Signaling by TGF-beta Receptor Complex in Cancer"                       "Signaling by WNT in cancer" 
 
+# I don't have these pathways in my analyses... not conclusive
+na.omit(top_pos_React[pathways,])
+# ID                   Description GeneRatio  BgRatio     pvalue  p.adjust     qvalue
+# R-HSA-2644603 R-HSA-2644603 Signaling by NOTCH1 in Cancer      1/10 58/10856 0.05218144 0.1108856 0.07209278
+# geneID Count
+# R-HSA-2644603  MAML2     1
+na.omit(top_neg_React[pathways,])
+# 0
+na.omit(top_neg_React[pathways,])
+# 0
 
 
 And graph the results for various metrics:
@@ -1620,6 +1831,65 @@ ggplot(marker_df_2, aes(x = pseudotime_order, y = gene, fill = norm_expression))
   labs(y = "Gene", x = "Pseudotime order")
 heatmap_plot <- last_plot()
 ```
+
+
+
+##################  <<<<<<<<<<<<<<< FIG 6b
+New heatmap plots:
+  
+  ```{r, cache = FALSE}
+sce_gene <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
+sce_gene <- updateSCESet(sce_gene)
+sce_gene <- sce_gene[, colnames(sce)]
+angiogenesis_genes_all <- read_csv("../../data/BRCA/ag_hallmark_geneset.txt", skip = 2, col_names = FALSE)[[1]]
+df_beta <- mutate(df_beta, is_angiogenesis = hgnc_symbol %in% angiogenesis_genes_all)
+growth_factor_grep <- c("^FGF", "^VEGF", "^EGF", "^TGF")
+growth_factors <- unlist(lapply(growth_factor_grep, grep, rowData(sce)$hgnc_symbol, value = TRUE))
+growth_factors <- growth_factors[growth_factors != "EFGLAM"]
+df_beta <- mutate(df_beta, is_gf = hgnc_symbol %in% growth_factors)
+ag_to_plot <- filter(df_beta, is_gf) %>%
+  arrange(desc(c)) %>%
+  head(n = 10) %>%
+  .$hgnc_symbol
+ag_to_plot <- c(ag_to_plot, "VEGFC")
+ag_inds <- match(ag_to_plot, rowData(sce_gene)$hgnc_symbol)
+marker_mat <- t(exprs(sce_gene))[, ag_inds, drop=FALSE]
+colnames(marker_mat) <- ag_to_plot
+marker_df <-  marker_mat %>% 
+  as_data_frame() %>% 
+  dplyr::mutate(pseudotime = tmap)
+mx <- as.matrix(dplyr::select(marker_df, -pseudotime))
+d <- dist(t(mx))
+hc <- hclust(d)
+gene_order <- rev(colnames(mx)[hc$order])
+winsorize <- function(x, lower = -2.5, upper = 2.5) {
+  x[x < lower] <- lower
+  x[x > upper] <- upper
+  x
+}
+marker_df_2 <- mutate(marker_df, pseudotime_order = rank(pseudotime)) %>% 
+  gather(gene, expression, -pseudotime_order, -pseudotime)
+marker_df_2$gene <- factor(marker_df_2$gene, levels = gene_order)
+marker_df_2 <- group_by(marker_df_2, gene) %>% 
+  mutate(norm_expression = winsorize((expression - mean(expression)) / sd(expression)))
+ggplot(marker_df_2, aes(x = pseudotime_order, y = gene, fill = norm_expression)) +
+  geom_raster(interpolate = FALSE) +
+  scale_fill_viridis(name = "Expression\nz-score") +
+  theme(legend.position = "right",
+        axis.title.y = element_text(size = 10),
+        axis.text.y = element_text(size = 7, margin = margin(r = -0.5, l = 0, unit = "cm")),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 10, margin = margin(t = 0, unit = "cm")),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 9),
+        legend.direction = "vertical",
+        legend.margin = margin(l = -.5, unit = "cm")) +
+  labs(y = "Gene", x = "Pseudotime order")
+heatmap_plot <- last_plot()
+```
+
 
 
 

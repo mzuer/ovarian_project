@@ -20,6 +20,7 @@ require(ReactomePA)
 require(reactome.db)
 require(AnnotationDbi)
 require(org.Hs.eg.db)
+require(tidyr)
 
 genome <- "hg19"
 id <- "ensGene"
@@ -39,8 +40,8 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-runPheno <- TRUE
-runNorm <- TRUE
+runPheno <- F
+runNorm <- F
 
 
 plotType <- "png"
@@ -68,7 +69,7 @@ dir.create(outFolder, recursive=TRUE)
 # load input data
 brca_data_raw <- get(load(file.path(inFolder, paste0("all_counts_onlyPF_", purityFilter, ".Rdata"))))
 dim(brca_data_raw)
-# 25526   893
+# [1] 25526   882
 
 stopifnot(brca_data_raw >= 0)
 
@@ -106,6 +107,8 @@ httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ense
 tokeep <- ! grepl("_PAR_Y$", rownames(brca_data_raw))
 cat(paste0("... remove weird genes: ", sum(!tokeep), "/", length(tokeep), "\n"))
 brca_data_raw <- brca_data_raw[tokeep,]
+dim(brca_data_raw)
+# [1] 25503   882
 stopifnot(!duplicated(gsub("\\..*", "",rownames(brca_data_raw))))
 rownames(brca_data_raw)<-gsub("\\..*", "",rownames(brca_data_raw))
 # get list of all protein-coding genes
@@ -117,12 +120,17 @@ dim(listOfGenes)
 
 brca_data_forNorm <- subset(brca_data_raw,rownames(brca_data_raw) %in% listOfGenes$ensembl_gene_id)
 dim(brca_data_forNorm)
-# [1] 19177   533
+# [1] 19159   533
 
 cat(paste0("... grep brca_data_forNorm"))              
 grep("ENSG00000124216", rownames(brca_data_forNorm))
 
 geneIDs_beforeNorm <- rownames(brca_data_forNorm)
+
+outFile <- file.path(outFolder, "brca_data_forNorm.Rdata")
+save(brca_data_forNorm, file=outFile)
+cat(paste0("... written: ", outFile, "\n"))
+
 
 ### normalize as in Lucchetta et al. 2019
 if(runNorm) {
@@ -659,6 +667,9 @@ for(gs in selected_symbs) {
 
 
 
+
+
+
 ############## look trajectory and phenotypes (tumor stages, age, etc.) ##############
 
 table(tcga_annot_dt$cgc_case_days_to_death)
@@ -854,6 +865,42 @@ outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadin
 ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
 
+
+textinfo <- frame_data(
+  ~x, ~y, ~label,
+  0.6, 0.15, "Gene upregulated\nER+ increases upregulation",
+  0.6, -0.15, "Gene upregulated\nER+ decreases upregulation",
+  -0.7, 0.15, "Gene downregulated\nER+ decreases downregulation",
+  -0.7, -0.15, "Gene downregulated\nER+ increases downregulation"
+)
+cols <- RColorBrewer::brewer.pal(3, "Set2")
+cols2 <- c("#c5e2d9", cols[2])
+outline_cols = c("#c5e2d9", 'black')
+ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) + 
+  geom_point(shape = 21, aes(fill = is_sig_graph, color = is_sig_graph), alpha = 0.8) +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = 2, alpha = 0.5) +
+  scale_fill_manual(values = cols2, name = "Interaction") +
+  scale_color_manual(values = outline_cols, name = "Interaction") +
+  geom_text_repel(data = dplyr::filter(df_beta, is_sig, abs(beta) > 0.7),
+                  aes(label = hgnc_symbol), color = 'black',
+                  size = 3) +
+  ylab("Covariate-pseudotime interaction") +
+  xlab("Gene regulation over pseudotime") +
+  theme(legend.position = 'bottom',
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10)) +
+  geom_text(data = textinfo, aes(x = x, y = y, label = label), 
+            color = 'black', size = 3, fontface = "bold")
+
+
+outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda_nicer.", plotType))
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
+cat(paste0("... written: ", outFile, "\n"))
+
+
 ############## look at the gene with top and bottom pathway loading ##############
 
 int_dt <- as.data.frame(int_dt)
@@ -987,12 +1034,12 @@ cat(paste0("... written: ", outFile, "\n"))
 # from the code https://github.com/kieranrcampbell/phenopath_analyses/blob/058fbd77dea3be6de03bf57a319d272a0eb15c64/analysis/BRCA/clvm_analysis.Rmd
 # https://github.com/kieranrcampbell/phenopath_revisions/blob/2c52ed25cedb0abb49465e6bf71b1b25640fd068/analysis/brca_reanalysis/clvm_analysis.Rmd
 # https://github.com/kieranrcampbell/phenopath_analyses/blob/058fbd77dea3be6de03bf57a319d272a0eb15c64/analysis/BRCA/clvm_analysis_er_pos.Rmd
-upreg_genes <- filter(cdf, correlation > 0.5) %>% extract2("feature") 
-downreg_genes <- filter(cdf, correlation < -0.5) %>% extract2("feature")
-gos <- bind_rows(
-  parse_go(goup, "Up-regulated", length(upreg_genes)),
-  parse_go(godown, "Down-regulated", length(downreg_genes))
-)
+# upreg_genes <- filter(cdf, correlation > 0.5) %>% extract2("feature") 
+# downreg_genes <- filter(cdf, correlation < -0.5) %>% extract2("feature")
+# gos <- bind_rows(
+#   parse_go(goup, "Up-regulated", length(upreg_genes)),
+#   parse_go(godown, "Down-regulated", length(downreg_genes))
+# )
 
 # A GO enrichment analysis of the genes upregulated along pseudotime whose upregulation was increased by LPS stimulation
 # showed enrichment for immune system processes.
@@ -1179,7 +1226,7 @@ stopifnot(!duplicated(gsub("\\..*", "",rownames(brca_data_raw))))
 
 to_keep <- rowMeans(brca_data_raw) > meanExprThresh_limma
 cat(paste0("... keep sufficient expr: ", sum(to_keep), "/", length(tokeep), "\n"))
-
+# 21636/25526
 
 ## Build DGEList object
 dge <- DGEList(counts = brca_data_raw[to_keep, ])
@@ -1321,7 +1368,7 @@ cat(paste0("... written: ", outFile, "\n"))
 genesymb1 <- "FBP1"
 genesymb2 <- "SNAI1"
 
-if(genesymb2 %in% ens2genes & genesymb1 %in% ens2genes) {
+if(genesymb2 %in% rownames(brca_data_filtered) & genesymb1 %in% rownames(brca_data_filtered)) {
   stopifnot(genesymb1 %in% ens2genes)
   gene_id1 <- names(ens2genes)[ens2genes == genesymb1]
   stopifnot(length(gene_id1) == 1)
@@ -1392,6 +1439,108 @@ if(genesymb2 %in% ens2genes & genesymb1 %in% ens2genes) {
 
 
 
+##################  <<<<<<<<<<<<<<< FIG 6b
+
+# download from here https://www.gsea-msigdb.org/gsea/msigdb/cards/HALLMARK_ANGIOGENESIS.html 11/9/21
+angiogenesis_genes_all <- read.delim("HALLMARK_ANGIOGENESIS.txt", skip=2, header=F)[,1]
+# gene_dt=get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_phenopath_fit.Rdata"))
+# brca_phenopath_fit=get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_phenopath_fit.Rdata"))
+# brca_data_filteredT=t(get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_data_filtered.Rdata")))
+
+# df_beta <- data_frame(
+#   c = pcavi$m_lambda,
+#   beta = pcavi$m_beta[1,],
+#   chi = pcavi$chi_exp[1,],
+#   alpha = pcavi$m_alpha[1,],
+#   pos_sd = sqrt(pcavi$s_beta[1,]),
+#   gene = rownames(sce),
+#   is_sig = as.vector(significant_interactions(pcavi, n = 3)),
+#   hgnc_symbol = rowData(sce)$hgnc_symbol,
+#   ensembl_gene_id = rowData(sce)$ensembl_gene_id
+# )
+int_dt <- as.data.frame(interactions(brca_phenopath_fit))
+df_beta <- data.frame(beta = interaction_effects(brca_phenopath_fit),
+                      beta_sd = interaction_sds(brca_phenopath_fit),
+                      is_sig = significant_interactions(brca_phenopath_fit),
+                      gene = colnames(brca_data_filteredT),
+                      stringsAsFactors = FALSE)
+stopifnot(df_beta$beta == int_dt$interaction_effect_size)
+stopifnot(df_beta$gene == int_dt$feature)
+stopifnot(df_beta$gene %in% names(ens2genes))
+df_beta$lambda <- int_dt$pathway_loading
+df_beta$gene_symb <- ens2genes[paste0(df_beta$gene)]
+df_beta$is_angiogenesis <- df_beta$gene_symb %in% angiogenesis_genes_all
+cat(paste0("angio genes av.: ", sum(df_beta$is_angiogenesis), "/", length(angiogenesis_genes_all), "\n"))
+# 19/36
+growth_factor_grep <- c("^FGF", "^VEGF", "^EGF", "^TGF")
+growth_factors <- unlist(lapply(growth_factor_grep, grep, df_beta$gene_symb, value = TRUE))
+growth_factors <- growth_factors[growth_factors != "EFGLAM"]
+
+df_beta$is_gf <- df_beta$gene_symb  %in% growth_factors
+cat(paste0("gowth factors av.: ", sum(df_beta$is_gf), "/", length(growth_factors), "\n"))
+# 32/32 by definition...
+
+# takes the top 10 of the growth factors sorted by lambda
+ag_to_plot <- filter(df_beta, is_gf) %>%
+  arrange(desc(lambda)) %>%
+  head(n = 10) %>%
+  .$gene_symb
+ag_to_plot <- c(ag_to_plot, "VEGFC")
+
+# retrieve the ones to plot
+stopifnot(rownames(brca_data_filtered) %in% names(ens2genes))
+pp_genes <- ens2genes[paste0(rownames(brca_data_filtered))]
+stopifnot(!is.na(pp_genes))
+stopifnot(rownames(brca_data_filtered) == names(pp_genes))
+stopifnot(ag_to_plot %in% pp_genes)
+
+ag_inds <- match(ag_to_plot, pp_genes)
+stopifnot(pp_genes[ag_inds] == ag_to_plot)
+
+marker_mat <- t(brca_data_filtered)[, ag_inds, drop=FALSE]
+stopifnot(pp_genes[colnames(marker_mat)] == ag_to_plot)
+colnames(marker_mat) <- ag_to_plot
+marker_df <-  marker_mat %>% 
+  as_data_frame() %>% 
+  dplyr::mutate(pseudotime = trajectory(brca_phenopath_fit))
+
+mx <- as.matrix(dplyr::select(marker_df, -pseudotime))
+d <- dist(t(mx))
+hc <- hclust(d)
+gene_order <- rev(colnames(mx)[hc$order])
+winsorize <- function(x, lower = -2.5, upper = 2.5) {
+  x[x < lower] <- lower
+  x[x > upper] <- upper
+  x
+}
+marker_df_2 <- mutate(marker_df, pseudotime_order = rank(pseudotime)) %>% 
+  gather(gene, expression, -pseudotime_order, -pseudotime)
+marker_df_2$gene <- factor(marker_df_2$gene, levels = gene_order)
+marker_df_2 <- group_by(marker_df_2, gene) %>% 
+  mutate(norm_expression = winsorize((expression - mean(expression)) / sd(expression)))
+p <- ggplot(marker_df_2, aes(x = pseudotime_order, y = gene, fill = norm_expression)) +
+  geom_raster(interpolate = FALSE) +
+  scale_fill_viridis(name = "Expression\nz-score") +
+  # scale_x_continuous(expand = expansion(mult = c(1,1)))+
+  theme(panel.grid=element_blank(),
+        panel.background=element_blank(),
+        plot.background=element_rect(color="white"),
+        legend.position = "right",
+        axis.title.y = element_text(size = 10),
+        axis.text.y = element_text(size = 7, margin = margin(r = -0.5, l = 0, unit = "cm")),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 10, margin = margin(t = 0, unit = "cm")),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 9),
+        legend.direction = "vertical",
+        legend.margin = margin(l = -.5, unit = "cm")) +
+  labs(y = "Gene", x = "Pseudotime order")
+
+outFile <- file.path(outFolder, paste0("angio_genes_ptime_order.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+cat(paste0("... written: ", outFile, "\n"))
 
 ##################################################
 cat(paste0("****** DONE"))
@@ -1742,99 +1891,9 @@ ggplot(df_gex, aes(x = phenotime, y = expression, color = x)) +
 
 # Plots for paper
 
-```{r more-vis}
-textinfo <- frame_data(
-  ~x, ~y, ~label,
-  0.6, 0.15, "Gene upregulated\nER+ increases upregulation",
-  0.6, -0.15, "Gene upregulated\nER+ decreases upregulation",
-  -0.7, 0.15, "Gene downregulated\nER+ decreases downregulation",
-  -0.7, -0.15, "Gene downregulated\nER+ increases downregulation"
-)
-cols <- RColorBrewer::brewer.pal(3, "Set2")
-cols2 <- c("#c5e2d9", cols[2])
-outline_cols = c("#c5e2d9", 'black')
-ggplot(df_beta, aes(x = c, y = beta)) + 
-  geom_point(shape = 21, aes(fill = is_sig_graph, color = is_sig_graph), alpha = 0.8) +
-  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5) +
-  geom_hline(yintercept = 0, linetype = 2, alpha = 0.5) +
-  scale_fill_manual(values = cols2, name = "Interaction") +
-  scale_color_manual(values = outline_cols, name = "Interaction") +
-  geom_text_repel(data = dplyr::filter(df_beta, is_sig, abs(beta) > 0.7),
-                 aes(label = hgnc_symbol), color = 'black',
-                 size = 3) +
-  ylab("Covariate-pseudotime interaction") +
-  xlab("Gene regulation over pseudotime") +
-  theme(legend.position = 'bottom',
-        axis.text = element_text(size = 10),
-        axis.title = element_text(size = 11),
-        legend.title = element_text(size = 11),
-        legend.text = element_text(size = 10)) +
-  geom_text(data = textinfo, aes(x = x, y = y, label = label), 
-            color = 'black', size = 3, fontface = "bold")
-lplot <- last_plot()
-lplot
 
 
 
-
-New heatmap plots:
-
-```{r, cache = FALSE}
-sce_gene <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
-sce_gene <- updateSCESet(sce_gene)
-sce_gene <- sce_gene[, colnames(sce)]
-angiogenesis_genes_all <- read_csv("../../data/BRCA/ag_hallmark_geneset.txt", skip = 2, col_names = FALSE)[[1]]
-df_beta <- mutate(df_beta, is_angiogenesis = hgnc_symbol %in% angiogenesis_genes_all)
-growth_factor_grep <- c("^FGF", "^VEGF", "^EGF", "^TGF")
-growth_factors <- unlist(lapply(growth_factor_grep, grep, rowData(sce)$hgnc_symbol, value = TRUE))
-growth_factors <- growth_factors[growth_factors != "EFGLAM"]
-df_beta <- mutate(df_beta, is_gf = hgnc_symbol %in% growth_factors)
-ag_to_plot <- filter(df_beta, is_gf) %>%
-  arrange(desc(c)) %>%
-  head(n = 10) %>%
-  .$hgnc_symbol
-ag_to_plot <- c(ag_to_plot, "VEGFC")
-ag_inds <- match(ag_to_plot, rowData(sce_gene)$hgnc_symbol)
-marker_mat <- t(exprs(sce_gene))[, ag_inds, drop=FALSE]
-colnames(marker_mat) <- ag_to_plot
-marker_df <-  marker_mat %>% 
-  as_data_frame() %>% 
-  dplyr::mutate(pseudotime = tmap)
-mx <- as.matrix(dplyr::select(marker_df, -pseudotime))
-d <- dist(t(mx))
-hc <- hclust(d)
-gene_order <- rev(colnames(mx)[hc$order])
-winsorize <- function(x, lower = -2.5, upper = 2.5) {
-  x[x < lower] <- lower
-  x[x > upper] <- upper
-  x
-}
-marker_df_2 <- mutate(marker_df, pseudotime_order = rank(pseudotime)) %>% 
-  gather(gene, expression, -pseudotime_order, -pseudotime)
-marker_df_2$gene <- factor(marker_df_2$gene, levels = gene_order)
-marker_df_2 <- group_by(marker_df_2, gene) %>% 
-  mutate(norm_expression = winsorize((expression - mean(expression)) / sd(expression)))
-ggplot(marker_df_2, aes(x = pseudotime_order, y = gene, fill = norm_expression)) +
-         geom_raster(interpolate = FALSE) +
-  scale_fill_viridis(name = "Expression\nz-score") +
-  theme(legend.position = "right",
-        axis.title.y = element_text(size = 10),
-        axis.text.y = element_text(size = 7, margin = margin(r = -0.5, l = 0, unit = "cm")),
-        axis.text.x = element_blank(),
-        axis.title.x = element_text(size = 10, margin = margin(t = 0, unit = "cm")),
-        axis.ticks = element_blank(),
-        axis.line = element_blank(),
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 9),
-        legend.direction = "vertical",
-        legend.margin = margin(l = -.5, unit = "cm")) +
-  labs(y = "Gene", x = "Pseudotime order")
-heatmap_plot <- last_plot()
-```
-
-
-
-##################  <<<<<<<<<<<<<<< FIG 6b
 New heatmap plots:
   
   ```{r, cache = FALSE}

@@ -465,6 +465,172 @@ cat(paste0("... written: ", outFile, "\n"))
 # maximum a-posteriori (MAP) estimates of the pseudotimes using the trajectory()
 
 brca_pseudotimes <-  trajectory(brca_phenopath_fit)
+
+
+############## complementary info to std gene DE ##############
+
+# look at genes that are differentially expressed (large difference of gene expression normal vs. tumor)
+# and that have different trajectories (high interaction effects)
+# Whilst many of these 92 genes are differentially expressed between MSI groups, including MLH2 and TGFBR2 (Fig. 5c), 
+# PhenoPath is able to resolve the dynamic contribution to these expression differences
+
+
+# see e.g. http://research.libd.org/recountWorkflow/articles/recount-workflow.html
+# brca_data_raw comes from here:
+# ovary_gtex <- scale_counts(TCGAquery_recount2(project="gtex", tissue = "ovary")$gtex_brcaary)
+# ovary_tcga <- scale_counts(TCGAquery_recount2(project="tcga", tissue = "ovary")$tcga_brcaary)
+# # I skip some steps of processing, but I have in the end 
+# # gene x sample matrix with GTEX samples starting with GTEX- and TCGA samples with TCGA-
+# ovary_all_data <- cbind(assays(ovary_gtex)$counts, assays(ovary_tcga)$counts)
+
+brca_data_raw <- get(load(file.path(inFolder, paste0("all_counts_onlyPF_", purityFilter, ".Rdata"))))
+
+# filter because I have removed the outlier !
+stopifnot(colnames(brca_data_raw)==c(ERpos_samples, ERneg_samples))
+stopifnot(colnames(brca_data_raw) == tcga_annot_dt$cgc_sample_id)
+stopifnot(!duplicated(tcga_annot_dt$cgc_sample_id))
+
+# remove the weird gene
+tokeep <- ! grepl("_PAR_Y$", rownames(brca_data_raw))
+cat(paste0("... remove weird genes: ", sum(!tokeep), "/", length(tokeep), "\n"))
+brca_data_raw <- brca_data_raw[tokeep,]
+stopifnot(!duplicated(gsub("\\..*", "",rownames(brca_data_raw))))
+
+
+## Extract counts and filter out lowly expressed geens
+
+to_keep <- rowMeans(brca_data_raw) > meanExprThresh_limma
+cat(paste0("... keep sufficient expr: ", sum(to_keep), "/", length(tokeep), "\n"))
+# 21636/25526
+
+## Build DGEList object
+dge <- DGEList(counts = brca_data_raw[to_keep, ])
+## Calculate normalization factors
+dge <- calcNormFactors(dge)
+
+x <- c(rep(1, length(ERpos_samples)), rep(-1, length(ERneg_samples)))
+
+### was done like:
+# design <- model.matrix(~ x, colData(sce))
+# were x=sce$x
+# from Tuto -> sce$x == colData(sce) except that colData(sce) returns in data frame format
+# usable by model.matrix -> not totally sure !!!!
+design <- model.matrix(~ x, as.data.frame(x))
+stopifnot(design[,2] == x)
+v <- voom(dge, design, plot = TRUE)
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+results <- decideTests(fit)
+
+outFile <- file.path(outFolder, paste0("limma_v2_venn_diag.", plotType))
+do.call(plotType, list(outFile, height=myHeight, width=myWidth))
+vennDiagram(results)
+mtext(side=3, text="limma v2")
+dev.off()
+cat(paste0("... written: ", outFile, "\n"))
+
+
+
+limma_genes <- gsub("(.+)\\..+", "\\1", rownames(fit$coefficients))
+stopifnot(!duplicated(limma_genes))
+stopifnot(nrow(as.data.frame(fit)) == length(limma_genes))
+qvals <- p.adjust(fit$p.value[,2], method = 'BH')
+
+df_limma <- data_frame(coef = fit$coefficients[,2], 
+                       pval = fit$p.value[,2],
+                       qval = qvals)
+stopifnot(nrow(df_limma) == length(limma_genes))
+df_limma$feature <- limma_genes
+
+
+tmp_int_dt <- as.data.frame(interactions(brca_phenopath_fit))
+stopifnot(tmp_int_dt$feature == brca_phenopath_fit$feature_names)
+tmp_int_dt$beta <- brca_phenopath_fit$m_beta[1,]
+tmp_int_dt$alpha <- brca_phenopath_fit$m_alpha[1,]
+tmp_int_dt$mu <- brca_phenopath_fit$m_mu
+stopifnot(tmp_int_dt$beta == tmp_int_dt$interaction_effect_size)
+
+limma_merged_dt <- merge(tmp_int_dt, df_limma, by="feature", all.x=T,all.y=F)
+stopifnot(nrow(limma_merged_dt) == nrow(tmp_int_dt))
+stopifnot(!is.na(limma_merged_dt))
+stopifnot(setequal(limma_merged_dt$feature, tmp_int_dt$feature))
+limma_merged_dt$log10qval <- -log10(limma_merged_dt$qval)
+limma_merged_dt$limma_sig <- limma_merged_dt$qval < 0.05
+
+p <- ggplot(limma_merged_dt, aes(x = coef, y = alpha, color = mu)) +
+  geom_point(alpha = 0.5) +
+  xlab("Limma voom coefficient") +
+  ylab(expression(paste("Phenotime ", alpha))) +
+  scale_color_viridis(name = expression(mu))
+
+outFile <- file.path(outFolder, paste0("limma_v2_coef_vs_phenopath_alpha.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+# There is some "twisting" there which may be due to using a mixed effects model rather than straight forward DE.
+
+limma_merged_dt$is_sig_graph <- ifelse(limma_merged_dt$significant_interaction,
+                                       "Significant", "Non-significant")
+
+
+cols <- RColorBrewer::brewer.pal(3, "Set2")
+cols2 <- c("#c5e2d9", cols[2])
+p <- ggplot(limma_merged_dt, x =-log10(qval), aes(x = beta, y =-log10(qval), color = is_sig_graph)) + 
+  geom_point() +
+  ylab(expression(paste("Limma voom -", log[10], "(q-value)"))) + 
+  xlab(expression(paste("PhenoPath ", beta))) +
+  # theme(legend.position = 'top') +
+  geom_hline(yintercept = -log10(0.05), linetype = 2, alpha = 0.5) +
+  theme(axis.text = element_text(size = 9),
+        axis.title = element_text(size = 10)) +
+  #theme(legend.title = element_text(size = 10),
+  #      legend.text = element_text(size = 9)) +
+  theme(legend.position = "none") +
+  scale_color_manual(values = cols2, name = "Interaction") 
+p <- ggExtra::ggMarginal(p, margins = "y", type = "histogram", size = 10)
+
+
+outFile <- file.path(outFolder, paste0("nicer_limma_v2_adjPval_vs_phenopath_beta.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+
+
+outFile <- file.path(outFolder, "limma_merged_dt.Rdata")
+save(limma_merged_dt, file=outFile)
+cat(paste0("... written: ", outFile, "\n"))
+
+outFile <- file.path(outFolder, "fit.Rdata")
+save(fit, file=outFile)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+
+
+# stop("--ok \n") 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
  
 ############## correlation with PCs ##############
 ### look if the pseudotimes correlate with the PCs
@@ -691,17 +857,17 @@ all_p <- list()
 
 for(i in 1:length(top_gs)) {
   ens_gs <- top_gs[i]
-  if(!gs %in% ens2genes) {
-    cat(paste0("warning: ", gs, " not available\n"))
+  if(!ens_gs %in% names(ens2genes)) {
+    cat(paste0("warning: ", ens_gs, " not available\n"))
     next
   }
-  i_gs <- which(df_beta$gene == gs)
+  i_gs <- which(df_beta$gene == ens_gs)
   stopifnot(ens_gs == df_beta$gene[i_gs])
   cat(paste0(i), "\n")
-  cat(paste0(gs), "\n")
+  # cat(paste0(gs), "\n")
   cat(paste0(ens_gs), "\n")
-  cat(paste0(which(ens2genes==gs)), "\n")
-  cat(paste0(names(ens2genes)[ens2genes==gs]), "\n")
+  # cat(paste0(which(ens2genes==gs)), "\n")
+  # cat(paste0(names(ens2genes)[ens2genes==gs]), "\n")
   cp_gs <- df_beta$crossover[i_gs]
   
   stopifnot(length(i_gs) == 1)
@@ -728,8 +894,8 @@ for(i in 1:length(top_gs)) {
 ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
 
 
-outFile <- file.path(outFolder, paste0(gs, "all_topBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
-ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*2)
+outFile <- file.path(outFolder, paste0("all_topPosBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*3)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -737,6 +903,53 @@ cat(paste0("... written: ", outFile, "\n"))
 
 #### do the same for the top 12 (3x4 grid) neg beta 
 
+#### do the same for the top 9 (3x3 grid) pos beta 
+top_gs <- df_beta$gene[order(df_beta$beta, decreasing = FALSE)][1:9]
+
+all_p <- list()
+
+for(i in 1:length(top_gs)) {
+  ens_gs <- top_gs[i]
+  if(!ens_gs %in% names(ens2genes)) {
+    cat(paste0("warning: ", ens_gs, " not available\n"))
+    next
+  }
+  i_gs <- which(df_beta$gene == ens_gs)
+  stopifnot(ens_gs == df_beta$gene[i_gs])
+  cat(paste0(i), "\n")
+  # cat(paste0(gs), "\n")
+  cat(paste0(ens_gs), "\n")
+  # cat(paste0(which(ens2genes==gs)), "\n")
+  # cat(paste0(names(ens2genes)[ens2genes==gs]), "\n")
+  cp_gs <- df_beta$crossover[i_gs]
+  
+  stopifnot(length(i_gs) == 1)
+  tmp_dt <- df_beta
+  tmp_dt <- tmp_dt[order(abs(tmp_dt$beta), decreasing = TRUE),]
+  
+  gs_beta_rank <- which(tmp_dt$gene == ens_gs)
+  stopifnot(length(gs_beta_rank) == 1)
+  gs_signif <- as.character(df_beta$is_sig[i_gs])
+  gs_beta <- round(df_beta$beta[i_gs], 3)
+  
+  p <- plot_iGeneExpr_gg2(igene= i_gs,
+                          exprdt=brca_data_filteredT,
+                          pseudot=brca_pseudotimes,
+                          covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
+                          valuedt=df_beta,
+                          valuecol="beta", symbcol="geneSymb", 
+                          subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
+  
+  # add crossoverline
+  p <- p + geom_vline(xintercept = cp_gs, linetype=2)
+  all_p[[i]] <- p
+}
+ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
+
+
+outFile <- file.path(outFolder, paste0("all_topNegBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*3)
+cat(paste0("... written: ", outFile, "\n"))
 
 
 
@@ -1328,6 +1541,16 @@ v <- voom(dge, my_design, plot = TRUE)
 ## Run remaining parts of the DE analysis
 fit <- lmFit(v, my_design)
 efit <- eBayes(fit)
+
+
+results <- decideTests(efit)
+outFile <- file.path(outFolder, paste0("limma_venn_diag.", plotType))
+do.call(plotType, list(outFile, height=myHeight, width=myWidth))
+vennDiagram(results)
+mtext(side=3, text="limma")
+dev.off()
+cat(paste0("... written: ", outFile, "\n"))
+
 
 ## Visually explore DE results
 # limma::plotMA(efit)

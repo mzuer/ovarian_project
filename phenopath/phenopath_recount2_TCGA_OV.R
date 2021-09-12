@@ -765,6 +765,110 @@ ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.
 cat(paste0("... written: ", outFile, "\n"))
 
 
+#### do the same for the top 9 (3x3 grid) pos beta   convergence ???
+## many of the 20 top beta value genes exhibit convergence
+stopifnot(ov_phenopath_fit$m_beta[1,] == df_beta$beta)
+stopifnot(ov_phenopath_fit$feature_names == df_beta$gene)
+
+df_beta$alpha <- ov_phenopath_fit$m_alpha[1,]
+df_beta$crossover <- -df_beta$alpha/df_beta$beta
+stopifnot(!is.na(df_beta))
+
+
+top_gs <- df_beta$gene[order(df_beta$beta, decreasing = TRUE)][1:9]
+
+all_p <- list()
+
+for(i in 1:length(top_gs)) {
+  ens_gs <- top_gs[i]
+  if(!ens_gs %in% names(ens2genes)) {
+    cat(paste0("warning: ", ens_gs, " not available\n"))
+    next
+  }
+  i_gs <- which(df_beta$gene == ens_gs)
+  stopifnot(ens_gs == df_beta$gene[i_gs])
+  cat(paste0(i), "\n")
+  # cat(paste0(gs), "\n")
+  cat(paste0(ens_gs), "\n")
+  # cat(paste0(which(ens2genes==gs)), "\n")
+  # cat(paste0(names(ens2genes)[ens2genes==gs]), "\n")
+  cp_gs <- df_beta$crossover[i_gs]
+  
+  stopifnot(length(i_gs) == 1)
+  tmp_dt <- df_beta
+  tmp_dt <- tmp_dt[order(abs(tmp_dt$beta), decreasing = TRUE),]
+  
+  gs_beta_rank <- which(tmp_dt$gene == ens_gs)
+  stopifnot(length(gs_beta_rank) == 1)
+  gs_signif <- as.character(df_beta$is_sig[i_gs])
+  gs_beta <- round(df_beta$beta[i_gs], 3)
+  
+  p <- plot_iGeneExpr_gg2(igene= i_gs,
+                          exprdt=ov_data_filteredT,
+                          pseudot=ov_pseudotimes,
+                          covarlab=ifelse(mycovar == 1, "TCGA", "GTEX"),
+                          valuedt=df_beta,
+                          valuecol="beta", symbcol="geneSymb", 
+                          subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
+  
+  # add crossoverline
+  p <- p + geom_vline(xintercept = cp_gs, linetype=2)
+  all_p[[i]] <- p
+}
+ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
+
+
+outFile <- file.path(outFolder, paste0( "all_topPosBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*3)
+cat(paste0("... written: ", outFile, "\n"))
+
+#### do the same for the top 9 (3x3 grid) neg beta 
+top_gs <- df_beta$gene[order(df_beta$beta, decreasing = FALSE)][1:9]
+
+all_p <- list()
+
+for(i in 1:length(top_gs)) {
+  ens_gs <- top_gs[i]
+  if(!ens_gs %in% names(ens2genes)) {
+    cat(paste0("warning: ", ens_gs, " not available\n"))
+    next
+  }
+  i_gs <- which(df_beta$gene == ens_gs)
+  stopifnot(ens_gs == df_beta$gene[i_gs])
+  cat(paste0(i), "\n")
+  # cat(paste0(gs), "\n")
+  cat(paste0(ens_gs), "\n")
+  # cat(paste0(which(ens2genes==gs)), "\n")
+  # cat(paste0(names(ens2genes)[ens2genes==gs]), "\n")
+  cp_gs <- df_beta$crossover[i_gs]
+  
+  stopifnot(length(i_gs) == 1)
+  tmp_dt <- df_beta
+  tmp_dt <- tmp_dt[order(abs(tmp_dt$beta), decreasing = TRUE),]
+  
+  gs_beta_rank <- which(tmp_dt$gene == ens_gs)
+  stopifnot(length(gs_beta_rank) == 1)
+  gs_signif <- as.character(df_beta$is_sig[i_gs])
+  gs_beta <- round(df_beta$beta[i_gs], 3)
+  
+  p <- plot_iGeneExpr_gg2(igene= i_gs,
+                          exprdt=ov_data_filteredT,
+                          pseudot=ov_pseudotimes,
+                          covarlab=ifelse(mycovar == 1, "TCGA", "GTEX"),
+                          valuedt=df_beta,
+                          valuecol="beta", symbcol="geneSymb", 
+                          subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
+  
+  # add crossoverline
+  p <- p + geom_vline(xintercept = cp_gs, linetype=2)
+  all_p[[i]] <- p
+}
+ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
+
+
+outFile <- file.path(outFolder, paste0( "all_topNegBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*3)
+cat(paste0("... written: ", outFile, "\n"))
 
 
 
@@ -1460,6 +1564,41 @@ foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
 
+stopifnot(ov_phenopath_fit$m_beta[1,] == df_beta$beta)
+stopifnot(ov_phenopath_fit$feature_names == df_beta$gene)
+
+df_beta$alpha <- ov_phenopath_fit$m_alpha[1,]
+df_beta$crossover <- -df_beta$alpha/df_beta$beta
+stopifnot(!is.na(df_beta))
+df_beta_sig <- df_beta[df_beta$is_sig,]
+
+mytit <- paste0("Crossover points distribution")
+subtit <- paste0("only signif. genes (n=", nrow(df_beta_sig), ")")
+med_val <- median(df_beta_sig$crossover)
+
+p <- ggplot(df_beta_sig, aes(x = crossover)) + 
+  ggtitle(paste0(mytit), subtitle=paste0(subtit))+
+  geom_histogram(fill = "#74a9cf", color = "grey90", bins = 30) +
+  xlab("Crossover point") + ylab("Number of genes") + 
+  geom_vline(xintercept = med_val, linetype=2)+
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme(
+    # plot.title = element_text(hjust=0.5),
+    # plot.subtitle = element_text(hjust=0.5),
+    panel.background = element_blank(),
+    axis.line=element_line(),
+    axis.text = element_text(size = 9),
+    axis.title = element_text(size = 10))
+
+max_val <- max(ggplot_build(p)$data[[1]]$count)
+p <- p + annotate("text", label=paste0("median = ", round(med_val, 3)),
+                  x=median(df_beta_sig$crossover) -0.1,
+                  y = max_val, hjust=1)
+
+outFile <- file.path(outFolder, paste0("signifGenes_crossoverPointsDistribution.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.4)
+cat(paste0("... written: ", outFile, "\n"))
+
 
 
 ##################################################
@@ -1677,7 +1816,7 @@ gene_list_ensembl <- lapply(gene_list, to_ensembl)
 And graph the results for various metrics:
   
   ```{r graph-for-metrics, eval = FALSE}
-sce <- readRDS("../../data/BRCA/sce_brca_gene_level.rds")
+sce <- readRDS("../../data/ov/sce_ov_gene_level.rds")
 all_genes <- unique(unlist(gene_list_ensembl))
 all_genes <- all_genes[all_genes %in% fData(sce)$ensembl_gene_id]
 mm <- match(all_genes, fData(sce)$ensembl_gene_id)

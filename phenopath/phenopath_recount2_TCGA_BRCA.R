@@ -11,9 +11,11 @@ require(ggsci)
 require(viridis)
 require(dplyr)
 require(limma)
+require(plyr)
 require(edgeR)
 require(matrixStats)
 require(goseq)
+require(reshape2)
 require(mclust)
 require(ggExtra)
 require(ReactomePA)
@@ -21,6 +23,9 @@ require(reactome.db)
 require(AnnotationDbi)
 require(org.Hs.eg.db)
 require(tidyr)
+library(gridExtra)
+library(ggplot2)
+
 
 genome <- "hg19"
 id <- "ensGene"
@@ -579,49 +584,51 @@ stopifnot(!duplicated(df_beta$gene))
 df_beta$geneSymb <- ens2genes[df_beta$gene]
 
 # the same for the lowest interaction effect ?
-
-p <- plot_iGeneExpr(igene= which.max(df_beta$beta),
-               exprdt=brca_data_filteredT,
+i_max <- which.max(df_beta$beta)
+p <- plot_iGeneExpr(igene= i_max,
+              exprdt=brca_data_filteredT,
                pseudot=brca_pseudotimes,
                covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                valuedt=df_beta,
                valuecol="beta", symbcol="geneSymb", subtit=paste0("highest ", betaU))
 
-outFile <- file.path(outFolder, paste0("highestBetaGene_expr_along_pseudotime.", plotType))
+outFile <- file.path(outFolder, paste0("highestBetaGene_", df_beta$geneSymb[i_max], "_expr_along_pseudotime.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
-p <- plot_iGeneExpr_gg2(igene= which.max(df_beta$beta),
+p <- plot_iGeneExpr_gg2(igene= i_max,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
                     covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                     valuedt=df_beta,
                     valuecol="beta", symbcol="geneSymb", subtit=paste0("highest ", betaU))
 
-outFile <- file.path(outFolder, paste0("highestBetaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+outFile <- file.path(outFolder, paste0("highestBetaGene_", df_beta$geneSymb[i_max], "_expr_along_pseudotime_gg2.", plotType))
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
-p <- plot_iGeneExpr(igene= which.min(df_beta$beta),
+i_min <-which.min(df_beta$beta)
+
+p <- plot_iGeneExpr(igene= i_min,
                exprdt=brca_data_filteredT,
                pseudot=brca_pseudotimes,
                covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                valuedt=df_beta,
                            valuecol="beta", symbcol="geneSymb", subtit=paste0("lowest ", betaU))
 
-outFile <- file.path(outFolder, paste0("lowestBetaGene_expr_along_pseudotime.", plotType))
+outFile <- file.path(outFolder, paste0("lowestBetaGene_", df_beta$geneSymb[i_min], "_expr_along_pseudotime.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
-p <- plot_iGeneExpr_gg2(igene= which.min(df_beta$beta),
+p <- plot_iGeneExpr_gg2(igene= i_min,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
                     covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                     valuedt=df_beta,
                     valuecol="beta", symbcol="geneSymb", subtit=paste0("lowest ", betaU))
 
-outFile <- file.path(outFolder, paste0("lowestBetaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+outFile <- file.path(outFolder, paste0("lowestBetaGene_", df_beta$geneSymb[i_min], "_expr_along_pseudotime_gg2.", plotType))
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -634,6 +641,14 @@ stopifnot(!duplicated(df_beta$gene))
 # if duplicated I would need to do some manual curation...
 df_beta$geneSymb <- ens2genes[df_beta$gene]
 
+## many of the 20 top beta value genes exhibit convergence
+stopifnot(brca_phenopath_fit$m_beta[1,] == df_beta$beta)
+stopifnot(brca_phenopath_fit$feature_names == df_beta$gene)
+
+df_beta$alpha <- brca_phenopath_fit$m_alpha[1,]
+df_beta$crossover <- -df_beta$alpha/df_beta$beta
+stopifnot(!is.na(df_beta))
+
 for(gs in selected_symbs) {
   if(!gs %in% ens2genes) {
     cat(paste0("warning: ", gs, " not available\n"))
@@ -641,6 +656,9 @@ for(gs in selected_symbs) {
   }
   i_gs <- which(df_beta$geneSymb == gs)
   ens_gs <- df_beta$gene[i_gs]
+  stopifnot(ens_gs == names(ens2genes)[ens2genes==gs])
+  cp_gs <- df_beta$crossover[i_gs]
+  
   stopifnot(length(i_gs) == 1)
   tmp_dt <- df_beta
   tmp_dt <- tmp_dt[order(abs(tmp_dt$beta), decreasing = TRUE),]
@@ -658,13 +676,66 @@ for(gs in selected_symbs) {
                           valuecol="beta", symbcol="geneSymb", 
                           subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
   
-  outFile <- file.path(outFolder, paste0(gs, "_geneExpr_along_pseudotime_gg2.", plotType))
-  ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+  # add crossoverline
+  p <- p + geom_vline(xintercept = cp_gs, linetype=2)
+  
+  outFile <- file.path(outFolder, paste0(gs, "_geneExpr_along_pseudotime_withCP_gg2.", plotType))
+  ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
   cat(paste0("... written: ", outFile, "\n"))
   
 }
+#### do the same for the top 9 (3x3 grid) pos beta 
+top_gs <- df_beta$gene[order(df_beta$beta, decreasing = TRUE)][1:9]
+
+all_p <- list()
+
+for(i in 1:length(top_gs)) {
+  ens_gs <- top_gs[i]
+  if(!gs %in% ens2genes) {
+    cat(paste0("warning: ", gs, " not available\n"))
+    next
+  }
+  i_gs <- which(df_beta$gene == gs)
+  stopifnot(ens_gs == df_beta$gene[i_gs])
+  cat(paste0(i), "\n")
+  cat(paste0(gs), "\n")
+  cat(paste0(ens_gs), "\n")
+  cat(paste0(which(ens2genes==gs)), "\n")
+  cat(paste0(names(ens2genes)[ens2genes==gs]), "\n")
+  cp_gs <- df_beta$crossover[i_gs]
+  
+  stopifnot(length(i_gs) == 1)
+  tmp_dt <- df_beta
+  tmp_dt <- tmp_dt[order(abs(tmp_dt$beta), decreasing = TRUE),]
+  
+  gs_beta_rank <- which(tmp_dt$gene == ens_gs)
+  stopifnot(length(gs_beta_rank) == 1)
+  gs_signif <- as.character(df_beta$is_sig[i_gs])
+  gs_beta <- round(df_beta$beta[i_gs], 3)
+  
+  p <- plot_iGeneExpr_gg2(igene= i_gs,
+                          exprdt=brca_data_filteredT,
+                          pseudot=brca_pseudotimes,
+                          covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
+                          valuedt=df_beta,
+                          valuecol="beta", symbcol="geneSymb", 
+                          subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
+  
+  # add crossoverline
+  p <- p + geom_vline(xintercept = cp_gs, linetype=2)
+  all_p[[i]] <- p
+}
+ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
 
 
+outFile <- file.path(outFolder, paste0(gs, "all_topBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*2)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+# stop("--ok\n")
+
+#### do the same for the top 12 (3x4 grid) neg beta 
 
 
 
@@ -717,7 +788,9 @@ table(tcga_annot_dt[,"cgc_case_pathologic_stage"])#
 myplotlab <- "pathologic stage"
 stg_ords <-c( "Stage I",  "Stage IA","Stage IB", "Stage II", "Stage IIA" ,"Stage IIB" , "Stage III","Stage IIIA", "Stage IIIB",
               "Stage IIIC",   "Stage IV", "Stage Tis", "Stage X")
-p <- plot_pheno_catego(tcga_annot_dt,  pt_traj = all_traj,plotvar= "cgc_case_pathologic_stage", plotxlab=paste0("TCGA BRCA ", myplotlab), varords=stg_ords)
+p <- plot_pheno_catego(tcga_annot_dt,  pt_traj = all_traj,
+                       plotvar= "cgc_case_pathologic_stage", plotxlab=paste0("TCGA BRCA ", myplotlab),
+                       varords=stg_ords)
 outFile <- file.path(outFolder, paste0("boxplot_pseudotimes_by_", paste0(gsub(" ", "_",myplotlab)),"_TCGA.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG)
 cat(paste0("... written: ", outFile, "\n"))
@@ -795,14 +868,14 @@ cat(paste0("... written: ", outFile, "\n"))
 # -  feature =>  The feature (usually gene)
 # - covariate => The covariate, specified from the order originally supplied to the call to phenopath
 # - interaction_effect_size => The effect size of the interaction (β
-# - significant => Boolean for whether the interaction effect is significantly different from 0
+# - significant_interaction => Boolean for whether the interaction effect is significantly different from 0
 # - chi => The precision of the ARD prior on β [Automatic Relevance Determination]
 # - pathway_loading => The pathway loading λ
 
 int_dt <- interactions(brca_phenopath_fit)
 stopifnot(as.character(int_dt$feature) %in% names(ens2genes))
 int_dt$featureSymb <- ens2genes[as.character(int_dt$feature) ]
-
+stopifnot(!is.na(int_dt$featureSymb))
 # plot the posterior ARD variances (1/χ) against the posterior interaction effect sizes (β)
 # colouring them by which are found to be significant and annotating the top few genes:
 
@@ -862,9 +935,12 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size,
         legend.text = element_text(size = 11))
 
 outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
+int_dt$is_sig_graph <- 
+  plyr::mapvalues(int_dt$significant_interaction, from = c(FALSE, TRUE),
+                  to = c("Non-significant", "Significant"))
 
 textinfo <- frame_data(
   ~x, ~y, ~label,
@@ -876,14 +952,14 @@ textinfo <- frame_data(
 cols <- RColorBrewer::brewer.pal(3, "Set2")
 cols2 <- c("#c5e2d9", cols[2])
 outline_cols = c("#c5e2d9", 'black')
-ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) + 
+p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) + 
   geom_point(shape = 21, aes(fill = is_sig_graph, color = is_sig_graph), alpha = 0.8) +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5) +
   geom_hline(yintercept = 0, linetype = 2, alpha = 0.5) +
   scale_fill_manual(values = cols2, name = "Interaction") +
   scale_color_manual(values = outline_cols, name = "Interaction") +
-  geom_text_repel(data = dplyr::filter(df_beta, is_sig, abs(beta) > 0.7),
-                  aes(label = hgnc_symbol), color = 'black',
+  geom_text_repel(data = dplyr::filter(int_dt, significant_interaction, abs(interaction_effect_size) > 0.7),
+                  aes(label = featureSymb), color = 'black',
                   size = 3) +
   ylab("Covariate-pseudotime interaction") +
   xlab("Gene regulation over pseudotime") +
@@ -897,9 +973,10 @@ ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) +
 
 
 outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda_nicer.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
+# stop("ok\n")
 
 ############## look at the gene with top and bottom pathway loading ##############
 
@@ -910,51 +987,51 @@ tmp1 <- tmp1[order(tmp1$interaction_effect_size),]
 tmp2 <- tmp2[order(tmp2$beta),]
 stopifnot(tmp1$featureSymb == tmp2$geneSymb)
 
-
-p <- plot_iGeneExpr(igene= which.min(int_dt$pathway_loading),
+i_min <- which.min(int_dt$pathway_loading)
+p <- plot_iGeneExpr(igene= i_min,
                                  exprdt=brca_data_filteredT,
                                  pseudot=brca_pseudotimes,
                                  covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                                  valuedt=int_dt,
                                              valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("lowest ", lambdaU))
 
-outFile <- file.path(outFolder, paste0("lowestLambdaGene_expr_along_pseudotime.", plotType))
+outFile <- file.path(outFolder, paste0("lowestLambdaGene_", int_dt$featureSymb[i_min], "_expr_along_pseudotime.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
-p <- plot_iGeneExpr_gg2(igene= which.min(int_dt$pathway_loading),
+p <- plot_iGeneExpr_gg2(igene= i_min,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
                     covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                     valuedt=int_dt,
                     valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("lowest ", lambdaU))
 
-outFile <- file.path(outFolder, paste0("lowestLambdaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+outFile <- file.path(outFolder, paste0("lowestLambdaGene_", int_dt$featureSymb[i_min], "_expr_along_pseudotime_gg2.", plotType))
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
-
-p <- plot_iGeneExpr(igene= which.max(int_dt$pathway_loading),
+i_max <- which.max(int_dt$pathway_loading)
+p <- plot_iGeneExpr(igene= i_max,
                exprdt=brca_data_filteredT,
                pseudot=brca_pseudotimes,
                covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                valuedt=int_dt,
                valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("highest ", lambdaU))
 
-outFile <- file.path(outFolder, paste0("highestLambdaGene_expr_along_pseudotime.", plotType))
+outFile <- file.path(outFolder, paste0("highestLambdaGene_", int_dt$featureSymb[i_max], "_expr_along_pseudotime.", plotType))
 ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
 
-p <- plot_iGeneExpr_gg2(igene= which.max(int_dt$pathway_loading),
+p <- plot_iGeneExpr_gg2(igene= i_max,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
                     covarlab=ifelse(mycovar == 1, "ER+", "ER-"),
                     valuedt=int_dt,
                     valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("highest ", lambdaU))
 
-outFile <- file.path(outFolder, paste0("highestLambdaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+outFile <- file.path(outFolder, paste0("highestLambdaGene_", int_dt$featureSymb[i_max], "_expr_along_pseudotime_gg2.", plotType))
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 ############## top significant pathway loading ##############
@@ -1012,18 +1089,28 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(2,3), summ_dt=s
             mysubtit = paste0("nER+=",nERpos, "; nER-=",nERneg))
 
 outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_ERpos_ERneg.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
 p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,2), summ_dt=summary(pca_brca),
                  condvect = myconds,
+                 colvect=brca_pseudotimes,
+                 mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
+                 mysubtit = paste0("nER+=",nERpos, "; nER-=",nERneg))
+
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_ERpos_ERneg.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
+cat(paste0("... written: ", outFile, "\n"))
+
+p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,3), summ_dt=summary(pca_brca),
+                 condvect = myconds,
             colvect=brca_pseudotimes,
             mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
             mysubtit = paste0("nER+=",nERpos, "; nER-=",nERneg))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_ERpos_ERneg.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_pseudotimeGrad_ERpos_ERneg.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 ############## gene set enrichment on top and bottom beta value genes ##############  <<<<<<<<<<<<<<< FIG 6c
@@ -1142,7 +1229,7 @@ p <- ggplot(corrExpr_gos, aes(x = term, y = log10qval)) +
     legend.text = element_text(size = 10)) 
 
 outFile <- file.path(outFolder, paste0("topCorrExpr_topGOs.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG*1.4, width=myWidthGG)
+ggsave(p, filename = outFile, height=myHeightGG*1.4, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -1338,7 +1425,7 @@ p <- ggplot(merged_dt, aes(x = beta, y =-log10(adj.P.Val), color = is_sig)) +
 p <- ggExtra::ggMarginal(p, margins = "y", type = "histogram", size = 10)
 
 outFile <- file.path(outFolder, paste0("nicer_limma_adjPval_vs_phenopath_beta.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
 outFile <- file.path(outFolder, paste0("limma_logFC_vs_phenopath_beta.", plotType))
@@ -1485,7 +1572,8 @@ ag_to_plot <- filter(df_beta, is_gf) %>%
   arrange(desc(lambda)) %>%
   head(n = 10) %>%
   .$gene_symb
-ag_to_plot <- c(ag_to_plot, "VEGFC")
+if("VEGF" %in% ens2genes)
+  ag_to_plot <- c(ag_to_plot, "VEGFC")
 
 # retrieve the ones to plot
 stopifnot(rownames(brca_data_filtered) %in% names(ens2genes))
@@ -1541,6 +1629,148 @@ p <- ggplot(marker_df_2, aes(x = pseudotime_order, y = gene, fill = norm_express
 outFile <- file.path(outFolder, paste0("angio_genes_ptime_order.", plotType))
 ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
+
+
+
+
+
+###>>>>>>> fig 6a barplot
+genes <- c("FGF2", "FBP1", "FOXC1")
+stopifnot(genes %in% ens2genes)
+genes_ens <- names(ens2genes)[ens2genes %in% genes]
+stopifnot(genes_ens %in% rownames(brca_data_filtered))
+
+ERneg_samples <- tcga_annot_dt$cgc_sample_id[tcga_annot_dt$ER_status == "Negative"]
+ERpos_samples <- tcga_annot_dt$cgc_sample_id[tcga_annot_dt$ER_status == "Positive"]
+
+stopifnot(colnames(brca_data_filtered) == c(ERpos_samples, ERneg_samples))
+stopifnot(rownames(brca_data_filteredT) == c(ERpos_samples, ERneg_samples))
+brca_pts <-  trajectory(brca_phenopath_fit)
+names(brca_pts) <- c(ERpos_samples, ERneg_samples)
+
+selected_expr_dt <- brca_data_filtered[genes_ens,]
+m_sexpr_dt <- melt(t(selected_expr_dt))
+colnames(m_sexpr_dt) <- c("samp", "gene","logexpr")
+m_sexpr_dt$geneSymb <- ens2genes[as.character(m_sexpr_dt$gene)]
+m_sexpr_dt$ER_status <- ifelse(m_sexpr_dt$samp %in% ERneg_samples, "ER-",
+                               ifelse(m_sexpr_dt$samp %in% ERpos_samples, "ER+",NA))
+m_sexpr_dt$pseudotime <- brca_pts[m_sexpr_dt$samp]
+stopifnot(!is.na(m_sexpr_dt))
+
+# thresholds from Campbell - modified to have different "end" for comparison
+# and modified for using apply (faster)
+classify_cell <- function(row) {
+  if(row['pseudotime'] > 0.5) return("end")
+  if(row['pseudotime'] < -0.3 && row['ER_status'] == "ER-") return('beginning-negative')
+  if(row['pseudotime'] < -0.3 && row['ER_status'] == "ER+") return("beginning-positive")
+  return(NA)
+}
+classify_cell_mz <- function(row) {
+  if(row['pseudotime'] > 0.5 && row['ER_status'] == "ER+") return('end-positive')
+  if(row['pseudotime'] > 0.5 && row['ER_status'] == "ER-") return('end-negative')
+  if(row['pseudotime'] < -0.3 && row['ER_status'] == "ER-") return('beginning-negative')
+  if(row['pseudotime'] < -0.3 && row['ER_status'] == "ER+") return("beginning-positive")
+  return(NA)
+}
+
+m_sexpr_dt$cell_Class <- sapply(seq_len(nrow(m_sexpr_dt)), function(i) classify_cell(m_sexpr_dt[i, ]))
+m_sexpr_dt$cell_ClassMZ <- sapply(seq_len(nrow(m_sexpr_dt)), function(i) classify_cell_mz(m_sexpr_dt[i, ]))
+
+stopifnot(grepl("beginning", m_sexpr_dt$cell_Class) == grepl("beginning",m_sexpr_dt$cell_ClassMZ ))
+stopifnot(grepl("end", m_sexpr_dt$cell_Class) == grepl("end",m_sexpr_dt$cell_ClassMZ ))
+
+## agg mean expression
+mean_byClass_dt <- aggregate(logexpr ~ geneSymb + cell_Class , data=m_sexpr_dt, FUN=mean)
+mean_byClassMZ_dt <- aggregate(logexpr ~ geneSymb + cell_ClassMZ , data=m_sexpr_dt, FUN=mean)
+# > zsc_byClass_dt <- aggregate(logexpr ~ geneSymb+cell_class, data = m_sexpr_dt, 
+#                               +                              function(x) mean(winsorize((x - mean(x)) / sd(x))))
+# > 
+#   > zsc_byClassMZ_dt <- aggregate(logexpr ~ geneSymb+cell_class_mz, data = m_sexpr_dt, 
+#                                   +                              function(x) mean(winsorize((x - mean(x)) / sd(x))))
+# > range(zsc_byClass_dt$logexpr)
+# [1] -0.04195008  0.02286164
+# z-score not done, not sure which across which dimension z-score should have been taken
+
+aggMet="mean"
+myclass="Class"
+for(aggMet in c("mean")) {
+  for(myclass in c("Class", "ClassMZ")) {
+    
+    mylab <- ifelse(aggMet == "mean", "Mean", ifelse(aggMet=="zsc", "Mean z-score", NA))
+    stopifnot(!is.na(mylab))
+    
+    plot_dt <- eval(parse(text = paste0(aggMet, "_by", myclass, "_dt")))
+    
+    p <- ggplot(plot_dt, aes(x = geneSymb, y = logexpr, fill = geneSymb)) +
+      geom_bar(stat = "identity", color = 'grey20') +
+      scale_fill_brewer(palette = "Dark2") +
+      # facet_wrap(~cell_class)+ 
+      facet_wrap(c(paste0("cell_", myclass)))+
+      scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+      # scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
+      theme(panel.background = element_blank(),
+            legend.position = "None",
+            axis.line = element_line(),
+            axis.title.x = element_blank(),
+            axis.title.y = element_text(size = 12, face = "bold"),
+            axis.text.y = element_text(size = 10),
+            axis.text.x = element_text(size = 8, angle = 90, face = "bold")) +
+      labs(y = paste0(mylab, "\n expression"))
+    
+    if(myclass=="Class"){
+      myWidthGG2 <- myWidthGG*1.2
+      myHeightGG2 <- myHeightGG
+    } else {
+        myWidthGG2 <- myWidthGG*1.2
+        myHeightGG2 <- myHeightGG2*1.4
+      }
+    
+    outFile <- file.path(outFolder, paste0("selectedGenes_", aggMet, "Expr_",myclass , "_barplot.", plotType))
+    ggsave(p, filename = outFile, height=myHeightGG2, width=myWidthGG2)
+    cat(paste0("... written: ", outFile, "\n"))
+    
+    
+  }}
+
+
+stopifnot(brca_phenopath_fit$m_beta[1,] == df_beta$beta)
+stopifnot(brca_phenopath_fit$feature_names == df_beta$gene)
+
+df_beta$alpha <- brca_phenopath_fit$m_alpha[1,]
+df_beta$crossover <- -df_beta$alpha/df_beta$beta
+stopifnot(!is.na(df_beta))
+df_beta_sig <- df_beta[df_beta$is_sig,]
+
+mytit <- paste0("Crossover points distribution")
+subtit <- paste0("only signif. genes (n=", nrow(df_beta_sig), ")")
+med_val <- median(df_beta_sig$crossover)
+
+p <- ggplot(df_beta_sig, aes(x = crossover)) + 
+  ggtitle(paste0(mytit), subtitle=paste0(subtit))+
+geom_histogram(fill = "#74a9cf", color = "grey90", bins = 30) +
+xlab("Crossover point") + ylab("Number of genes") + 
+  geom_vline(xintercept = med_val, linetype=2)+
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme(
+  # plot.title = element_text(hjust=0.5),
+  # plot.subtitle = element_text(hjust=0.5),
+  panel.background = element_blank(),
+      axis.line=element_line(),
+  axis.text = element_text(size = 9),
+      axis.title = element_text(size = 10))
+
+max_val <- max(ggplot_build(p)$data[[1]]$count)
+p <- p + annotate("text", label=paste0("median = ", round(med_val, 3)),
+                  x=median(df_beta_sig$crossover) -0.1,
+                  y = max_val, hjust=1)
+
+outFile <- file.path(outFolder, paste0("signifGenes_crossoverPointsDistribution.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG2)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+
+
 
 ##################################################
 cat(paste0("****** DONE"))
@@ -1994,20 +2224,31 @@ ggplot(brca_exprs_tidy, aes(x = z, y = expression, color = ER_status)) +
 ggsave("../../figs/brca_genes.png", width = 9, height = 6)
 ```
 
-"Can we look at FBP1 vs SNAIL expression?"
 
-```{r fbp1-vs-snail}
-genes <- c("FBP1", "SNAI1")
-mm <- match(genes, rowData(sce_gene)$hgnc_symbol)
-fs_exprs <- t(exprs(sce_gene)[mm, ]) %>% as_data_frame()
-names(fs_exprs) <- genes
-fs_exprs <- mutate(fs_exprs, ER_status = x_str)
-ggplot(fs_exprs, aes(x = FBP1, y = SNAI1, color = ER_status)) +
-  geom_point(alpha = 0.6) +
-  theme(legend.position = "top") +
-  scale_color_brewer(palette = "Set1", name = "ER status") +
-  xlab("FBP1 expression "~log[2]~"(TPM+1)") + 
-  ylab(expression("SNAIL expression "~log[2]~"(TPM+1)"))
-ggsave("../../figs/fbp1-vs-snail.png", width = 4, height = 4)
-```
+
+
+gather() does the reverse of spread(). gather() collects a set of column names and
+places them into a single “key” column. It also collects the cells of those columns 
+and places them into a single value column. You can use gather() to tidy table4.
+table4  # cases
+
+## Source: local data frame [3 x 3]
+## 
+##       country   1999   2000
+## 1 Afghanistan    745   2666
+## 2      Brazil  37737  80488
+## 3       China 212258 213766
+
+gather(table4, "year", "cases", 2:3)
+
+## Source: local data frame [6 x 3]
+## 
+##       country year  cases
+## 1 Afghanistan 1999    745
+## 2      Brazil 1999  37737
+## 3       China 1999 212258
+## 4 Afghanistan 2000   2666
+## 5      Brazil 2000  80488
+## 6       China 2000 213766
+
 

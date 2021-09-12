@@ -174,7 +174,8 @@ plot_iGeneExpr_gg2 <- function(igene, exprdt, pseudot, covarlab, valuedt,
   return(p)
 }
 
-plot_pheno_catego <- function(annot_dt, pt_traj,plotvar, plotxlab, plotylab="PP Pseudotimes", varords=NULL) {
+plot_pheno_catego <- function(annot_dt, pt_traj,plotvar, plotxlab, 
+                              plotylab="PP Pseudotimes", varords=NULL) {
   tcga_traj_dt <- data.frame(
     tcga_samp = annot_dt$cgc_sample_id,
     tcga_plotvar = annot_dt[,plotvar],
@@ -195,7 +196,6 @@ plot_pheno_catego <- function(annot_dt, pt_traj,plotvar, plotxlab, plotylab="PP 
     geom_jitter(aes(col=tcga_plotvar),alpha=0.7,position=position_jitterdodge())+
     ggtitle(paste0("Pseudotime by ", plotxlab),
             subtitle = paste0("(TCGA data; av.: ", na_txt, ")"))+
-    scale_color_nejm()+
     scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
     xlab(paste0(plotxlab))+
     ylab(paste0(plotylab))+
@@ -203,6 +203,9 @@ plot_pheno_catego <- function(annot_dt, pt_traj,plotvar, plotxlab, plotylab="PP 
     labs(color="")+
     theme(axis.text.x=element_blank(),
           axis.ticks.x = element_blank() )
+  if(length(unique(tcga_traj_dt$tcga_plotvar)) <= 8){
+    p <- p+scale_color_nejm()
+  } 
   return(p)
 }
 

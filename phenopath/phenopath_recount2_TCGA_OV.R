@@ -1,6 +1,7 @@
 
 # Rscript phenopath_recount2_TCGA_OV.R
 
+
 require(recount)
 require(TCGAbiolinks)
 require(biomaRt)
@@ -10,9 +11,18 @@ require(ggrepel)
 require(ggsci)
 require(viridis)
 require(dplyr)
+require(limma)
+require(plyr)
+require(edgeR)
+require(matrixStats)
 require(goseq)
-require("limma")
-require("edgeR")
+require(mclust)
+require(ggExtra)
+require(ReactomePA)
+require(reactome.db)
+require(AnnotationDbi)
+require(org.Hs.eg.db)
+require(tidyr)
 
 genome <- "hg19"
 id <- "ensGene"
@@ -727,7 +737,7 @@ p <- plot_iGeneExpr_gg2(igene= which.max(df_beta$beta),
                     valuecol="beta", symbcol="geneSymb", subtit=paste0("highest ", betaU))
 
 outFile <- file.path(outFolder, paste0("highestBetaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -740,7 +750,7 @@ p <- plot_iGeneExpr(igene= which.min(df_beta$beta),
                            valuecol="beta", symbcol="geneSymb", subtit=paste0("lowest ", betaU))
 
 outFile <- file.path(outFolder, paste0("lowestBetaGene_expr_along_pseudotime.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.2)
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
 p <- plot_iGeneExpr_gg2(igene= which.min(df_beta$beta),
@@ -751,7 +761,7 @@ p <- plot_iGeneExpr_gg2(igene= which.min(df_beta$beta),
                     valuecol="beta", symbcol="geneSymb", subtit=paste0("lowest ", betaU))
 
 outFile <- file.path(outFolder, paste0("lowestBetaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -963,8 +973,50 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size,
         legend.text = element_text(size = 11))
 
 outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
+
+
+
+int_dt$is_sig_graph <- 
+  plyr::mapvalues(int_dt$significant_interaction, from = c(FALSE, TRUE),
+                  to = c("Non-significant", "Significant"))
+
+textinfo <- frame_data(
+  ~x, ~y, ~label,
+  0.6, 0.15, "Gene upregulated\nTumor increases upregulation",
+  0.6, -0.15, "Gene upregulated\nTumor decreases upregulation",
+  -0.7, 0.15, "Gene downregulated\nTumor decreases downregulation",
+  -0.7, -0.15, "Gene downregulated\nTumor increases downregulation"
+)
+cols <- RColorBrewer::brewer.pal(3, "Set2")
+cols2 <- c("#c5e2d9", cols[2])
+outline_cols = c("#c5e2d9", 'black')
+p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) + 
+  geom_point(shape = 21, aes(fill = is_sig_graph, color = is_sig_graph), alpha = 0.8) +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = 2, alpha = 0.5) +
+  scale_fill_manual(values = cols2, name = "Interaction") +
+  scale_color_manual(values = outline_cols, name = "Interaction") +
+  geom_text_repel(data = dplyr::filter(int_dt, significant_interaction, abs(interaction_effect_size) > 0.7),
+                  aes(label = featureSymb), color = 'black',
+                  size = 3) +
+  ylab("Covariate-pseudotime interaction") +
+  xlab("Gene regulation over pseudotime") +
+  theme(legend.position = 'bottom',
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10)) +
+  geom_text(data = textinfo, aes(x = x, y = y, label = label), 
+            color = 'black', size = 3, fontface = "bold")
+
+
+outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda_nicer.", plotType))
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+cat(paste0("... written: ", outFile, "\n"))
+
+# stop("ok\n")
 
 ############## look at the gene with top and bottom pathway loading ##############
 
@@ -995,7 +1047,7 @@ p <- plot_iGeneExpr_gg2(igene= which.min(int_dt$pathway_loading),
                     valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("lowest ", lambdaU))
 
 outFile <- file.path(outFolder, paste0("lowestLambdaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -1019,7 +1071,7 @@ p <- plot_iGeneExpr_gg2(igene= which.max(int_dt$pathway_loading),
                     valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("highest ", lambdaU))
 
 outFile <- file.path(outFolder, paste0("highestLambdaGene_expr_along_pseudotime_gg2.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width = myWidthGG*1.5)
+ggsave(plot = p, filename = outFile, height=myHeightGG*0.9, width = myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 ############## top significant pathway loading ##############
@@ -1073,7 +1125,7 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_ov_lowrepr), pctoplot=c(2,3), summ_dt=sum
             mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
 
 outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_tcga_gtex.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -1084,9 +1136,20 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_ov_lowrepr), pctoplot=c(1,2), summ_dt=sum
             mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
 
 outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_tcga_gtex.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
+
+
+p <- pcaplot_gg2(pca_dt=data.frame(pca_ov_lowrepr), pctoplot=c(1,3), summ_dt=summary(pca_ov),
+                 condvect = gsub("(^.+?)-.+", "\\1", rownames(pca_ov_lowrepr)),
+                 colvect=ov_pseudotimes,
+                 mytit = paste0("TCGA+GTEX OV notNorm (log2(.+1))"),
+                 mysubtit = paste0("nGTEX=",nGTEX, "; nTCGA=",nTCGA))
+
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_pseudotimeGrad_tcga_gtex.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
+cat(paste0("... written: ", outFile, "\n"))
 ############## gene set enrichment on top and bottom beta value genes ##############
 
 
@@ -1189,7 +1252,7 @@ p <- ggplot(corrExpr_gos, aes(x = term, y = log10qval)) +
     legend.text = element_text(size = 10)) 
 
 outFile <- file.path(outFolder, paste0("topCorrExpr_topGOs.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG*1.4, width=myWidthGG)
+ggsave(p, filename = outFile, height=myHeightGG*1.4, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -1373,7 +1436,7 @@ p <- ggplot(merged_dt, aes(x = beta, y =-log10(adj.P.Val), color = is_sig)) +
 p <- ggExtra::ggMarginal(p, margins = "y", type = "histogram", size = 10)
 
 outFile <- file.path(outFolder, paste0("nicer_limma_adjPval_vs_phenopath_beta.", plotType))
-ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -1642,6 +1705,5 @@ ggplot(df3, aes(x = z, y = gex)) +
   facet_wrap(~ pathway, scales = 'free_y') +
   ylab("Median pathway expression") +
   stat_smooth(color = 'red', se = F)
-
 
 

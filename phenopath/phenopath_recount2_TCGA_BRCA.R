@@ -726,7 +726,7 @@ dfBeta_topGenes$dir <- factor(dfBeta_topGenes$dir, levels=c("pos", "neg"))
 p <-  ggplot(dfBeta_topGenes, aes(x = geneSymb, y = beta, color = is_sig)) +
     geom_point() +
     facet_wrap(. ~ dir ,scales="free") +
-    ggtitle(paste0("Genes with top ", betaU), subtitle=paste0("(", nTop, " lowest and hightest)"))+
+    ggtitle(paste0("Genes with top ", betaU), subtitle=paste0("(", nTop, " lowest and highest)"))+
     geom_errorbar(aes(ymin = beta - 2 * beta_sd, ymax = beta + 2 * beta_sd)) +
     theme(plot.title = element_text(hjust=0.5),
           plot.subtitle = element_text(hjust=0.5),
@@ -895,7 +895,7 @@ ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
 
 
 outFile <- file.path(outFolder, paste0("all_topPosBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
-ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*3)
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*1.9, width = myWidthGG*3.2)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -948,7 +948,7 @@ ag_allp <- do.call(gridExtra:::grid.arrange,c(all_p, ncol=3))
 
 
 outFile <- file.path(outFolder, paste0("all_topNegBeta_geneExpr_along_pseudotime_withCP_gg2.", plotType))
-ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*2, width = myWidthGG*3)
+ggsave(plot = ag_allp, filename = outFile, height=myHeightGG*1.9, width = myWidthGG*3.2)
 cat(paste0("... written: ", outFile, "\n"))
 
 
@@ -1481,7 +1481,12 @@ p <- ggplot(betacorr_gos, aes(x = term, y = log10qval, color = type)) +
   theme(axis.title.y = element_blank(), legend.position = "none") +
   scale_color_brewer(palette = "Set1") +
   ylab(expression(paste(log[10], " q-value"))) +
-  theme(axis.text = element_text(size = 10),
+  geom_segment(aes(y = min(log10qval - 1), yend = log10qval, x = term, xend = term),
+               color = 'grey30', linetype = 3)+
+  theme(
+    panel.background = element_blank(),
+    axis.line = element_line(),
+      axis.text = element_text(size = 10),
         axis.title.x = element_text(size = 11))
 
 outFile <- file.path(outFolder, paste0("topBeta_topGOs.", plotType))
@@ -1924,11 +1929,14 @@ for(aggMet in c("mean")) {
     
     plot_dt <- eval(parse(text = paste0(aggMet, "_by", myclass, "_dt")))
     
+    plot_dt$geneSymb <- factor(plot_dt$geneSymb, levels=c("FGF2", "FBP1", "FOXC1"))
+    stopifnot(!is.na(plot_dt$geneSymb))
+    
     p <- ggplot(plot_dt, aes(x = geneSymb, y = logexpr, fill = geneSymb)) +
       geom_bar(stat = "identity", color = 'grey20') +
       scale_fill_brewer(palette = "Dark2") +
       # facet_wrap(~cell_class)+ 
-      facet_wrap(c(paste0("cell_", myclass)))+
+      facet_wrap(c(paste0("cell_", myclass)), scales="free")+
       scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
       # scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
       theme(panel.background = element_blank(),
@@ -1937,15 +1945,15 @@ for(aggMet in c("mean")) {
             axis.title.x = element_blank(),
             axis.title.y = element_text(size = 12, face = "bold"),
             axis.text.y = element_text(size = 10),
-            axis.text.x = element_text(size = 8, angle = 90, face = "bold")) +
+            axis.text.x = element_text(size = 8, angle = -90,hjust=0.5, face = "bold")) +
       labs(y = paste0(mylab, "\n expression"))
     
     if(myclass=="Class"){
-      myWidthGG2 <- myWidthGG*1.2
-      myHeightGG2 <- myHeightGG
+      myWidthGG2 <- myWidthGG*2
+      myHeightGG2 <- myHeightGG*0.7
     } else {
-        myWidthGG2 <- myWidthGG*1.2
-        myHeightGG2 <- myHeightGG2*1.4
+        myWidthGG2 <- myWidthGG*1.5
+        myHeightGG2 <- myHeightGG*1.3
       }
     
     outFile <- file.path(outFolder, paste0("selectedGenes_", aggMet, "Expr_",myclass , "_barplot.", plotType))
@@ -2003,8 +2011,11 @@ stop("--ok\n")
 ####################################################################################################
 ### THRASH
 ####################################################################################################
-
-
+dt1=get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/limma_merged_dt.Rdata"))
+dt2=get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/merged_dt.Rdata"))
+stopifnot(dt1$feature==dt2$ensemblID)
+stopifnot(round(dt1$pval,4)==round(dt2$P.Value,4))
+stopifnot(round(dt1$qval,4)==round(dt2$adj.P.Val,4))
 
 ############## survival analysis  ##############
 #tcga_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_BRCA_RECOUNT2/tcga_sampleAnnot.Rdata"))

@@ -694,7 +694,7 @@ dfBeta_topGenes$dir <- factor(dfBeta_topGenes$dir, levels=c("pos", "neg"))
 p <-  ggplot(dfBeta_topGenes, aes(x = geneSymb, y = beta, color = is_sig)) +
     geom_point() +
     facet_wrap(. ~ dir ,scales="free") +
-    ggtitle(paste0("Genes with top ", betaU), subtitle=paste0("(", nTop, " lowest and hightest)"))+
+    ggtitle(paste0("Genes with top ", betaU), subtitle=paste0("(", nTop, " lowest and highest)"))+
     geom_errorbar(aes(ymin = beta - 2 * beta_sd, ymax = beta + 2 * beta_sd)) +
     theme(plot.title = element_text(hjust=0.5),
           plot.subtitle = element_text(hjust=0.5),

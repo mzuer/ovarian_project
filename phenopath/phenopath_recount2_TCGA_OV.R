@@ -93,6 +93,185 @@ stopifnot(ov_data_raw >= 0)
 gtex_annot_dt <- get(load(file.path(inFolder, "gtex_sampleAnnot.RData")))
 tcga_annot_dt <- get(load(file.path(inFolder, "tcga_sampleAnnot.Rdata")))
 
+
+
+
+httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ensembl biomart connection
+
+
+#~~~~~ REACTOME ENRICHMENT analysis
+
+ov_data_filtered <- get(load(file.path(outFolder, "ov_data_filtered.Rdata")))
+ov_data_filteredT <- t(ov_data_filtered)
+ov_phenopath_fit <- get(load(file.path(outFolder, "ov_phenopath_fit.Rdata")))
+ov_pseudotimes <-  trajectory(ov_phenopath_fit)
+
+gene_names <- colnames(ov_data_filteredT)
+df_beta <- data.frame(beta = interaction_effects(ov_phenopath_fit),
+                      beta_sd = interaction_sds(ov_phenopath_fit),
+                      is_sig = significant_interactions(ov_phenopath_fit),
+                      gene = gene_names)
+
+
+###### FIRST WAY TO GET MATCHING IDS
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+listOfGenes_entrez <- getBM(attributes = c("entrezgene_id", "ensembl_gene_id", "gene_biotype"),
+                            filters = c("biotype"),values = list(biotype="protein_coding"), mart = mart)
+dim(listOfGenes_entrez)
+# [1] 23069     3
+stopifnot(df_beta$gene %in% listOfGenes_entrez$ensembl_gene_id)
+listOfGenes_entrez <- listOfGenes_entrez[listOfGenes_entrez$ensembl_gene_id %in% df_beta$gene,]
+dim(listOfGenes_entrez)
+# [1] 6005    3
+listOfGenes_entrez <- listOfGenes_entrez[!is.na(listOfGenes_entrez$entrezgene_id),]
+dim(listOfGenes_entrez)
+# 5982 3
+# I need to have unique ensemblID
+listOfGenes_entrez <- listOfGenes_entrez[!duplicated(listOfGenes_entrez$ensembl_gene_id),]
+dim(listOfGenes_entrez)
+# [1] 5982 3
+any(duplicated(listOfGenes_entrez$entrezgene_id))
+# TRUE
+stopifnot(!duplicated(listOfGenes_entrez$ensembl_gene_id))
+stopifnot(!is.na(listOfGenes_entrez$ensembl_gene_id))
+listOfGenes_entrez1 <- setNames(listOfGenes_entrez$entrezgene_id, listOfGenes_entrez$ensembl_gene_id)
+stopifnot(!is.na(listOfGenes_entrez1))
+
+###### 2ND WAY TO GET MATCHING IDS
+#columns(org.Hs.eg.db) # returns list of available keytypes
+listOfGenes_entrez2 <- mapIds(org.Hs.eg.db,
+                              keys=df_beta$gene, #Column containing Ensembl gene ids
+                              column="ENTREZID",
+                              keytype="ENSEMBL",
+                              multiVals="first")
+listOfGenes_entrez2 <- listOfGenes_entrez2[!is.na(listOfGenes_entrez2)]
+stopifnot(!is.na(listOfGenes_entrez2))
+length(listOfGenes_entrez2)
+# 5996
+any(duplicated(listOfGenes_entrez2))
+# TRUE # also duplicated entrez
+
+stopifnot(names(listOfGenes_entrez1) %in% df_beta$gene)
+stopifnot(names(listOfGenes_entrez2) %in% df_beta$gene)
+stopifnot(!is.na(listOfGenes_entrez2))
+stopifnot(!is.na(listOfGenes_entrez1))
+
+# if one is longer, take the longest, otherwise take the one with least duplicated entrezIDs (less ambiguous)
+if(length(listOfGenes_entrez1) != length(listOfGenes_entrez2)) {
+  if(length(listOfGenes_entrez1) > length(listOfGenes_entrez2)) {
+    ens2entrez <- listOfGenes_entrez1
+    cat(paste0("... take list 1\n"))
+  } else {
+    ens2entrez <- listOfGenes_entrez2
+    cat(paste0("... take list 2\n"))
+  }
+} else {
+  if(length(unique(listOfGenes_entrez1)) > length(unique(listOfGenes_entrez2))) {
+    ens2entrez <- listOfGenes_entrez1
+    cat(paste0("... take list 1\n"))
+  } else { # if == take list 2 (do not know better way)
+    ens2entrez <- listOfGenes_entrez2
+    cat(paste0("... take list 2\n"))
+  }
+}
+cat(paste0("av. genes with matched entrez ID:", length(ens2entrez), "/", nrow(df_beta), "\n"))
+cat(paste0("# duplicated entrezIDs: ", sum(duplicated(ens2entrez)), "\n"))
+
+df_beta_entrez <- df_beta[df_beta$gene %in% names(ens2entrez),]
+stopifnot(paste0(df_beta_entrez$gene) %in% names(ens2entrez))
+df_beta_entrez$gene_entrez <- ens2entrez[paste0(df_beta_entrez$gene)]
+stopifnot(!is.na(df_beta_entrez))
+
+top20_posbeta <- df_beta_entrez[order(df_beta_entrez$beta, decreasing = TRUE),][1:20,"gene_entrez"]
+
+top20_negbeta <- df_beta_entrez[order(df_beta_entrez$beta, decreasing = FALSE),][1:20,"gene_entrez"]
+
+top20_absbeta <- df_beta_entrez[order(abs(df_beta_entrez$beta), decreasing = TRUE),][1:20,"gene_entrez"]
+
+# will not use the cutoff because no one signif, but still want to look at the top ones
+# reactome_pvaluecutoff <- 0.05
+# from here: https://www.biostars.org/p/434669/
+# seems ok to leave universe param out
+cat(paste0("... run Reactome PA\n"))
+top_pos_React <- enrichPathway(gene=top20_posbeta, pvalueCutoff = 1 , readable=TRUE)
+top_neg_React <- enrichPathway(gene=top20_negbeta, pvalueCutoff = 1 , readable=TRUE)
+top_abs_React <- enrichPathway(gene=top20_absbeta, pvalueCutoff = 1 , readable=TRUE)
+cat(paste0("...... finished\n"))
+
+keep_cols <- c("Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID")
+out_topPos <- top_pos_React@result[,keep_cols]
+out_topPos$pvalue <- round(out_topPos$pvalue, 4)
+out_topPos$p.adjust <- round(out_topPos$p.adjust, 4)
+out_topPos$qvalue <- round(out_topPos$qvalue, 4)
+
+outFile <- file.path(outFolder, "reactomeEnrichment_topPosBeta.txt")
+write.table(out_topPos, file = outFile, sep="\t", col.names=T, row.names=F, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+out_topNeg <- top_neg_React@result[,keep_cols]
+out_topNeg$pvalue <- round(out_topNeg$pvalue, 4)
+out_topNeg$p.adjust <- round(out_topNeg$p.adjust, 4)
+out_topNeg$qvalue <- round(out_topNeg$qvalue, 4)
+
+outFile <- file.path(outFolder, "reactomeEnrichment_topNegBeta.txt")
+write.table(out_topNeg, file = outFile, sep="\t", col.names=T, row.names=F, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+out_topAbs <- top_abs_React@result[,keep_cols]
+out_topAbs$pvalue <- round(out_topAbs$pvalue, 4)
+out_topAbs$p.adjust <- round(out_topAbs$p.adjust, 4)
+out_topAbs$qvalue <- round(out_topAbs$qvalue, 4)
+outFile <- file.path(outFolder, "reactomeEnrichment_topAbsBeta.txt")
+write.table(out_topAbs, file = outFile, sep="\t", col.names=T, row.names=F, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+stop("--ok\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # 1- gc content normalization
 # xx=rownames(ov_data_raw)
 # xx=xx[!grepl("_PAR_Y$", xx)]
@@ -1021,7 +1200,7 @@ int_dt$featureSymb <- ens2genes[as.character(int_dt$feature) ]
 # plot the posterior ARD variances (1/χ) against the posterior interaction effect sizes (β)
 # colouring them by which are found to be significant and annotating the top few genes:
 
-chi_cutoff <- sort(int_dt$chi)[10]
+chi_cutoff <- sort(int_dt$chi)[11]
 
 
 p <- ggplot(int_dt, aes(x = interaction_effect_size, y = 1 / chi,
@@ -1044,7 +1223,7 @@ p <- ggplot(int_dt, aes(x = interaction_effect_size, y = 1 / chi,
 
 
 outFile <- file.path(outFolder, paste0("posteriorARDchi_vs_posteriorEffectSizeBeta.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.4)
 cat(paste0("... written: ", outFile, "\n"))
 
 # plot the “landscape” of interactions, where we plot the interaction effect size against the pathway score.
@@ -1077,8 +1256,11 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size,
         legend.text = element_text(size = 11))
 
 outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.4)
 cat(paste0("... written: ", outFile, "\n"))
+
+
+stop("--ok\n")
 
 
 
@@ -1404,7 +1586,7 @@ cat(paste0("... written: ", outFile, "\n"))
 
 
 # for reactome pathway analysis
-# https://github.com/kieranrcampbell/phenopath_revisions/blob/master/analysis/brca_reanalysis/clvm_analysis.Rmd
+# https://github.com/kieranrcampbell/phenopath_revisions/blob/master/analysis/ov_reanalysis/clvm_analysis.Rmd
 
 ############## complementary info to std gene DE ##############
 

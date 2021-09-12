@@ -25,7 +25,8 @@ require(org.Hs.eg.db)
 require(tidyr)
 library(gridExtra)
 library(ggplot2)
-
+require(survival)
+require(survminer)
 
 genome <- "hg19"
 id <- "ensGene"
@@ -80,6 +81,256 @@ stopifnot(brca_data_raw >= 0)
 
 
 tcga_annot_dt <- get(load(file.path(inFolder, "tcga_sampleAnnot.Rdata")))
+
+
+
+
+
+
+
+
+
+
+
+#~~~~~ survival analysis
+
+brca_data_filtered <- get(load(file.path(outFolder, "brca_data_filtered.Rdata")))
+brca_data_filteredT <- t(brca_data_filtered)
+brca_phenopath_fit <- get(load(file.path(outFolder, "brca_phenopath_fit.Rdata")))
+brca_pseudotimes <-  trajectory(brca_phenopath_fit)
+
+library(RTCGA)
+library(RTCGA.clinical)
+
+stopifnot(!duplicated(tcga_annot_dt$patient_barcode))
+
+surv_dt <- survivalTCGA(BRCA.clinical, 
+                        extract.cols="admin.disease_code")
+# Show the first few lines
+head(surv_dt)
+
+tcga_annot_dt$labs_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_annot_dt$cgc_sample_id)
+stopifnot(tcga_annot_dt$labs_for_survival %in% surv_dt$bcr_patient_barcode)
+stopifnot(tcga_annot_dt$patient_barcode == tcga_annot_dt$labs_for_survival)
+stopifnot(!duplicated(tcga_annot_dt$labs_for_survival))
+
+all_ERstatus <- ifelse(tcga_annot_dt$ER_status == "Positive", "ER+",
+                       ifelse(tcga_annot_dt$ER_status == "Negative", "ER-", NA))
+stopifnot(!is.na(all_ERstatus))
+all_ERstatus <- setNames(all_ERstatus, tcga_annot_dt$labs_for_survival)
+surv_dt <- surv_dt[surv_dt$bcr_patient_barcode %in% tcga_annot_dt$labs_for_survival,]
+stopifnot(nrow(surv_dt) == nrow(tcga_annot_dt))
+
+# add pseudotime info
+all_ptimes <- brca_pseudotimes
+stopifnot(rownames(brca_data_filteredT) == tcga_annot_dt$cgc_sample_id)
+names(all_ptimes) <- tcga_annot_dt$labs_for_survival
+
+surv_dt$pseudotime <- all_ptimes[paste0(surv_dt$bcr_patient_barcode)]
+stopifnot(!is.na(surv_dt$pseudotime))
+
+surv_dt$ER_status <- all_ERstatus[paste0(surv_dt$bcr_patient_barcode)]
+stopifnot(!is.na(surv_dt$ER_status))
+
+### TAKE ONLY THE pseudotime > 0 ???
+surv_dt <- surv_dt[surv_dt$pseudotime > 0,]
+
+# let’s run a Cox PH model
+# By default it’s going to treat ER- cancer as the baseline, because alphabetically it’s first.
+coxph(Surv(times, patient.vital_status)~ER_status + pseudotime, data=surv_dt)
+# This tells us that compared to the baseline ER- group, ER+ have ~0.7x increase in hazards, 
+# and pseuodtime 1.12x worse survival. 
+# Let’s create a survival curve, visualize it with a Kaplan-Meier plot, and show a table for the first 5 years survival rates.
+sfit <- survfit(Surv(times, patient.vital_status)~ER_status + pseudotime, data=surv_dt)
+time_range <- seq(0,800,2000)
+summary(sfit, times=time_range)
+
+surv_dt$pt_bin <- cut(surv_dt$pseudotime, breaks=seq(0,1,0.25))
+stopifnot(!is.na(surv_dt$pt_bin))
+
+fit1 <- survfit(Surv(times,patient.vital_status) ~ pt_bin + strata(ER_status), data = surv_dt)
+ggsurvplot(fit1, data = surv_dt, risk.table = FALSE)
+
+fit2 <- survfit(Surv(times,patient.vital_status) ~ pt_bin + ER_status, data = surv_dt)
+ggsurvplot(fit2, data = surv_dt, risk.table = FALSE)
+
+# I don't understand the difference...
+
+p <- ggsurvplot_facet(fit2, data = surv_dt, 
+                      conf.int = TRUE, 
+                      pval=TRUE,
+                      legend="bottom",
+                      legend.title="Pseudotime",
+                      legend.labs =as.character(levels(surv_dt$pt_bin)),
+                      facet.by="ER_status",
+                      risk.table = FALSE)
+
+
+
+outFile <- file.path(outFolder, paste0("survival_ERstatus_by_pseudotime.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+
+############## REACTOME PATHWAY ENRICHMENT analysis  ##############
+# *a pathway enrichment analysis using Reactome to discover whether any of the top 20 interacting genes (by β value) *
+# not sure if take absolute beta in the article ??
+# brca_data_filtered <- get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_data_filtered.Rdata"))
+# brca_data_filteredT <- t(brca_data_filtered)
+# brca_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_phenopath_fit.Rdata"))
+
+gene_names <- colnames(brca_data_filteredT)
+df_beta <- data.frame(beta = interaction_effects(brca_phenopath_fit),
+                      beta_sd = interaction_sds(brca_phenopath_fit),
+                      is_sig = significant_interactions(brca_phenopath_fit),
+                      gene = gene_names)
+
+###### FIRST WAY TO GET MATCHING IDS
+
+httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ensembl biomart connection
+
+ mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+listOfGenes_entrez <- getBM(attributes = c("entrezgene_id", "ensembl_gene_id", "gene_biotype"),
+                            filters = c("biotype"),values = list(biotype="protein_coding"), mart = mart)
+dim(listOfGenes_entrez)
+# [1] 23069     3
+stopifnot(df_beta$gene %in% listOfGenes_entrez$ensembl_gene_id)
+listOfGenes_entrez <- listOfGenes_entrez[listOfGenes_entrez$ensembl_gene_id %in% df_beta$gene,]
+dim(listOfGenes_entrez)
+# [1] 6005    3
+listOfGenes_entrez <- listOfGenes_entrez[!is.na(listOfGenes_entrez$entrezgene_id),]
+dim(listOfGenes_entrez)
+# 5982 3
+# I need to have unique ensemblID
+listOfGenes_entrez <- listOfGenes_entrez[!duplicated(listOfGenes_entrez$ensembl_gene_id),]
+dim(listOfGenes_entrez)
+# [1] 5982 3
+any(duplicated(listOfGenes_entrez$entrezgene_id))
+# TRUE
+stopifnot(!duplicated(listOfGenes_entrez$ensembl_gene_id))
+stopifnot(!is.na(listOfGenes_entrez$ensembl_gene_id))
+listOfGenes_entrez1 <- setNames(listOfGenes_entrez$entrezgene_id, listOfGenes_entrez$ensembl_gene_id)
+stopifnot(!is.na(listOfGenes_entrez1))
+
+###### 2ND WAY TO GET MATCHING IDS
+#columns(org.Hs.eg.db) # returns list of available keytypes
+listOfGenes_entrez2 <- mapIds(org.Hs.eg.db,
+                              keys=df_beta$gene, #Column containing Ensembl gene ids
+                              column="ENTREZID",
+                              keytype="ENSEMBL",
+                              multiVals="first")
+listOfGenes_entrez2 <- listOfGenes_entrez2[!is.na(listOfGenes_entrez2)]
+stopifnot(!is.na(listOfGenes_entrez2))
+length(listOfGenes_entrez2)
+# 5996
+any(duplicated(listOfGenes_entrez2))
+# TRUE # also duplicated entrez
+
+stopifnot(names(listOfGenes_entrez1) %in% df_beta$gene)
+stopifnot(names(listOfGenes_entrez2) %in% df_beta$gene)
+stopifnot(!is.na(listOfGenes_entrez2))
+stopifnot(!is.na(listOfGenes_entrez1))
+
+# if one is longer, take the longest, otherwise take the one with least duplicated entrezIDs (less ambiguous)
+if(length(listOfGenes_entrez1) != length(listOfGenes_entrez2)) {
+  if(length(listOfGenes_entrez1) > length(listOfGenes_entrez2)) {
+    ens2entrez <- listOfGenes_entrez1
+    cat(paste0("... take list 1\n"))
+  } else {
+    ens2entrez <- listOfGenes_entrez2
+    cat(paste0("... take list 2\n"))
+  }
+} else {
+  if(length(unique(listOfGenes_entrez1)) > length(unique(listOfGenes_entrez2))) {
+    ens2entrez <- listOfGenes_entrez1
+    cat(paste0("... take list 1\n"))
+  } else { # if == take list 2 (do not know better way)
+    ens2entrez <- listOfGenes_entrez2
+    cat(paste0("... take list 2\n"))
+  }
+}
+cat(paste0("av. genes with matched entrez ID:", length(ens2entrez), "/", nrow(df_beta), "\n"))
+cat(paste0("# duplicated entrezIDs: ", sum(duplicated(ens2entrez)), "\n"))
+
+df_beta_entrez <- df_beta[df_beta$gene %in% names(ens2entrez),]
+stopifnot(paste0(df_beta_entrez$gene) %in% names(ens2entrez))
+df_beta_entrez$gene_entrez <- ens2entrez[paste0(df_beta_entrez$gene)]
+stopifnot(!is.na(df_beta_entrez))
+
+top20_posbeta <- df_beta_entrez[order(df_beta_entrez$beta, decreasing = TRUE),][1:20,"gene_entrez"]
+
+top20_negbeta <- df_beta_entrez[order(df_beta_entrez$beta, decreasing = FALSE),][1:20,"gene_entrez"]
+
+top20_absbeta <- df_beta_entrez[order(abs(df_beta_entrez$beta), decreasing = TRUE),][1:20,"gene_entrez"]
+
+# will not use the cutoff because no one signif, but still want to look at the top ones
+# reactome_pvaluecutoff <- 0.05
+# from here: https://www.biostars.org/p/434669/
+# seems ok to leave universe param out
+cat(paste0("... run Reactome PA\n"))
+top_pos_React <- enrichPathway(gene=top20_posbeta, pvalueCutoff = 1 , readable=TRUE)
+top_neg_React <- enrichPathway(gene=top20_negbeta, pvalueCutoff = 1 , readable=TRUE)
+top_abs_React <- enrichPathway(gene=top20_absbeta, pvalueCutoff = 1 , readable=TRUE)
+cat(paste0("...... finished\n"))
+
+keep_cols <- c("Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID")
+out_topPos <- top_pos_React@result[,keep_cols]
+out_topPos$pvalue <- round(out_topPos$pvalue, 4)
+out_topPos$p.adjust <- round(out_topPos$p.adjust, 4)
+out_topPos$qvalue <- round(out_topPos$qvalue, 4)
+
+outFile <- file.path(outFolder, "reactomeEnrichment_topPosBeta.txt")
+write.table(out_topPos, file = outFile, sep="\t", col.names=T, row.names=F, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+out_topNeg <- top_neg_React@result[,keep_cols]
+out_topNeg$pvalue <- round(out_topNeg$pvalue, 4)
+out_topNeg$p.adjust <- round(out_topNeg$p.adjust, 4)
+out_topNeg$qvalue <- round(out_topNeg$qvalue, 4)
+
+outFile <- file.path(outFolder, "reactomeEnrichment_topNegBeta.txt")
+write.table(out_topNeg, file = outFile, sep="\t", col.names=T, row.names=F, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+out_topAbs <- top_abs_React@result[,keep_cols]
+out_topAbs$pvalue <- round(out_topAbs$pvalue, 4)
+out_topAbs$p.adjust <- round(out_topAbs$p.adjust, 4)
+out_topAbs$qvalue <- round(out_topAbs$qvalue, 4)
+outFile <- file.path(outFolder, "reactomeEnrichment_topAbsBeta.txt")
+write.table(out_topAbs, file = outFile, sep="\t", col.names=T, row.names=F, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+# stop("--ok\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 1- gc content normalization
 # xx=rownames(brca_data_raw)
@@ -463,7 +714,7 @@ cat(paste0("... written: ", outFile, "\n"))
   
 ####### retrieve the pseudotimes
 # maximum a-posteriori (MAP) estimates of the pseudotimes using the trajectory()
-
+# brca_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_brca/brca_phenopath_fit.Rdata"))
 brca_pseudotimes <-  trajectory(brca_phenopath_fit)
 
 
@@ -1092,7 +1343,7 @@ stopifnot(!is.na(int_dt$featureSymb))
 # plot the posterior ARD variances (1/χ) against the posterior interaction effect sizes (β)
 # colouring them by which are found to be significant and annotating the top few genes:
 
-chi_cutoff <- sort(int_dt$chi)[10]
+chi_cutoff <- sort(int_dt$chi)[11]
 
 
 p <- ggplot(int_dt, aes(x = interaction_effect_size, y = 1 / chi,
@@ -1115,7 +1366,7 @@ p <- ggplot(int_dt, aes(x = interaction_effect_size, y = 1 / chi,
 
 
 outFile <- file.path(outFolder, paste0("posteriorARDchi_vs_posteriorEffectSizeBeta.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.4)
 cat(paste0("... written: ", outFile, "\n"))
 
 # plot the “landscape” of interactions, where we plot the interaction effect size against the pathway score.
@@ -1148,8 +1399,14 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size,
         legend.text = element_text(size = 11))
 
 outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda.", plotType))
-ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.2)
+ggsave(plot = p, filename = outFile, height=myHeightGG, width=myWidthGG*1.4)
 cat(paste0("... written: ", outFile, "\n"))
+
+
+
+stop("--ok\n")
+
+
 
 int_dt$is_sig_graph <- 
   plyr::mapvalues(int_dt$significant_interaction, from = c(FALSE, TRUE),
@@ -2018,6 +2275,10 @@ stopifnot(round(dt1$pval,4)==round(dt2$P.Value,4))
 stopifnot(round(dt1$qval,4)==round(dt2$adj.P.Val,4))
 
 ############## survival analysis  ##############
+# brca_phenopath_fit <- get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_phenopath_fit.Rdata"))
+# brca_pseudotimes <-  trajectory(brca_phenopath_fit)
+# brca_data_filtered <- get(load("PHENOPATH_RECOUNT2_TCGA_BRCA/brca_data_filtered.Rdata"))
+# brca_data_filteredT <- t(brca_data_filtered)
 #tcga_annot_dt <- get(load("../tcga_data/DOWNLOAD_TCGA_BRCA_RECOUNT2/tcga_sampleAnnot.Rdata"))
 library(RTCGA)
 library(RTCGA.clinical)
@@ -2076,10 +2337,20 @@ ggsurvplot(fit2, data = surv_dt, risk.table = FALSE)
 
 # I don't understand the difference...
 
-ggsurvplot_facet(fit2, data = surv_dt, facet.by="ER_status",risk.table = FALSE)+labs(col="Pseudotime")
+p <- ggsurvplot_facet(fit2, data = surv_dt, 
+                 conf.int = TRUE, 
+                 pval=TRUE,
+                 legend="bottom",
+                 legend.title="Pseudotime",
+                 legend.labs =as.character(levels(surv_dt$pt_bin)),
+                 facet.by="ER_status",
+                 risk.table = FALSE)
 
 
 
+outFile <- file.path(outFolder, paste0("survival_ERstatus_by_pseudotime.", plotType))
+ggsave(p, filename = outFile, height=myHeightGG, width=myWidthGG*1.5)
+cat(paste0("... written: ", outFile, "\n"))
 
 
 
@@ -2180,6 +2451,35 @@ top_pos_React <- enrichPathway(gene=top20_posbeta, pvalueCutoff = 1 , readable=T
 top_neg_React <- enrichPathway(gene=top20_negbeta, pvalueCutoff = 1 , readable=TRUE)
 top_abs_React <- enrichPathway(gene=top20_absbeta, pvalueCutoff = 1 , readable=TRUE)
 cat(paste0("...... finished\n"))
+
+keep_cols <- c("Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID")
+out_topPos <- top_pos_React@result[,keep_cols]
+out_topPos$pvalue <- round(out_topPos$pvalue, 4)
+out_topPos$p.adjust <- round(out_topPos$p.adjust, 4)
+out_topPos$qvalue <- round(out_topPos$qvalue, 4)
+
+outFile <- file.path(outFolder, "reactomeEnrichment_topPosBeta.txt")
+write.table(out_topPos, file = outFile, sep="\t", col.names=T, row.names=T, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+out_topNeg <- top_neg_React@result[,keep_cols]
+out_topNeg$pvalue <- round(out_topNeg$pvalue, 4)
+out_topNeg$p.adjust <- round(out_topNeg$p.adjust, 4)
+out_topNeg$qvalue <- round(out_topNeg$qvalue, 4)
+
+outFile <- file.path(outFolder, "reactomeEnrichment_topNegBeta.txt")
+write.table(out_topNeg, file = outFile, sep="\t", col.names=T, row.names=T, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
+
+out_topAbs <- top_abs_React@result[,keep_cols]
+out_topAbs$pvalue <- round(out_topAbs$pvalue, 4)
+out_topAbs$p.adjust <- round(out_topAbs$p.adjust, 4)
+out_topAbs$qvalue <- round(out_topAbs$qvalue, 4)
+outFile <- file.path(outFolder, "reactomeEnrichment_topAbsBeta.txt")
+write.table(out_topAbs, file = outFile, sep="\t", col.names=T, row.names=T, quote=F)
+cat(paste0("... written: ", outFile, "\n"))
+
 
 # geneRatio = ratio of input genes that are annotated in a term
 # BgRatio = ratio of all genes that are annotated in this term

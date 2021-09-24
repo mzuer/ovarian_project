@@ -19,7 +19,7 @@ tcga_purity_thresh <- 0.6 # cf Lucchetta et al. 2019
 # duplicated samples
 # https://www.biostars.org/p/311017/
 
-compute_meds <- FALSE
+compute_meds <- F
 
 checkGene <- "ENSG00000124216"
 httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ensembl biomart connection
@@ -30,6 +30,9 @@ httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ense
 
 
 breast_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "breast")
+
+save(breast_rec2_tcga, file=file.path(outFolder, "breast_rec2_tcga.Rdata"))
+
 breast_rec2_tcga_scaled <- scale_counts(breast_rec2_tcga$tcga_breast)
 tcga_counts_raw_all <- assays(breast_rec2_tcga_scaled)$counts
 cat(paste0("--- check gene - raw: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
@@ -282,7 +285,7 @@ stopifnot(colnames(tcga_counts_raw_all) == rownames(tcga_sampleAnnot))
 
 
 ### retrieve PAM50 annotation
-source("http://www.bioconductor.org/biocLite.R")
+#source("http://www.bioconductor.org/biocLite.R")
 library(TCGAbiolinks)
 cancer <- "BRCA"
 PlatformCancer <- "IlluminaHiSeq_RNASeqV2"

@@ -46,8 +46,8 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-runPheno <- F
-runNorm <- F
+runPheno <- T
+runNorm <- T
 
 
 plotType <- "png"
@@ -805,10 +805,12 @@ cat(paste0("... written: ", outFile, "\n"))
 # plot selected genes from Campbell and Yau 2018
 selected_symbs <- c("ESR1", "FOXC1", "FBP1","FGD5", "METTL6", "CPT1A",
                     "DTX3", "MRPS23", "EIF2S2", "EIF6", "SLC2A10",
-                    "PI3KCA", "ERBB2", "ERBB3", "GATA3", "FOXA1", "XBP1") 
+                    "PI3KCA", "ERBB2", "ERBB3", "ESR1",
+                    "ERS1", "GATA3", "FOXA1", "XBP1") 
 # 1st row from the Campbell
 # 2nd row Gatza et al. "uniquely amplified in patients with highly proliferative luminal breast"
-#3d row "marker genes" from Harbeck et al. 
+# 3d row "marker genes" from Harbeck et al. 2019 - lumB
+# 4th row "marker genes" from Harbeck et al. 2019 - lumA [NB: ERS1 likely a typo, should be ESR1]
 
 gs="FOXC1"
 stopifnot(df_beta$gene == colnames(brca_data_filteredT))

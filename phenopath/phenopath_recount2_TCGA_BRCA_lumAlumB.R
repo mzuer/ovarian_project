@@ -46,8 +46,8 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-runPheno <- T
-runNorm <- T
+runPheno <- F
+runNorm <- F
 
 
 plotType <- "png"

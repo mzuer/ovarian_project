@@ -19,7 +19,7 @@ tcga_purity_thresh <- 0.6 # cf Lucchetta et al. 2019
 # duplicated samples
 # https://www.biostars.org/p/311017/
 
-compute_meds <- F
+compute_meds <- T
 
 checkGene <- "ENSG00000124216"
 httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ensembl biomart connection
@@ -137,52 +137,153 @@ tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$labs_for_purity%in% purity
 cat(paste0("--- check gene - filt4: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
 
 
-###~~~ 5th FILTER: ER STATUS FILTER
-###*# retrieve ER+ ER- status
-# as indicated here: https://www.biostars.org/p/279048/#279069
-# download from https://portal.gdc.cancer.gov/legacy-archive/search/f, 9/9/21
-full_annot_dt <- read.delim("nationwidechildrens.org_clinical_patient_brca.txt", header=TRUE, stringsAsFactors = FALSE)
-head(full_annot_dt$bcr_patient_barcode)
-head(full_annot_dt$er_status_by_ihc)
-head(full_annot_dt$nte_er_status)
-head(full_annot_dt$bcr_patient_uuid)
-# [1] "bcr_patient_uuid"                     "CDE_ID:"                             
-# [3] "6E7D5EC6-A469-467C-B748-237353C23416" "55262FCB-1B01-4480-B322-36570430C917"
-# [5] "427D0648-3F77-4FFC-B52C-89855426D647" "C31900A4-5DCD-4022-97AC-638E86E889E4"
-head(full_annot_dt$bcr_patient_barcode)
-# [1] "bcr_patient_barcode" "CDE_ID:2673794"      "TCGA-3C-AAAU"        "TCGA-3C-AALI"       
-# [5] "TCGA-3C-AALJ"        "TCGA-3C-AALK"       
-head(full_annot_dt$patient_id)
-# [1] "patient_id" "CDE_ID:"    "AAAU"       "AALI"       "AALJ"       "AALK"      
-### subset ER+/- before the median
-tcga_sampleAnnot$patient_barcode <- substr(start=1, stop=12, tcga_sampleAnnot$cgc_sample_id)
-stopifnot(tcga_sampleAnnot$patient_barcode %in% full_annot_dt$bcr_patient_barcode)
-stopifnot(!duplicated(full_annot_dt$bcr_patient_barcode))
-sampleAnnot <- setNames(full_annot_dt$er_status_by_ihc, full_annot_dt$bcr_patient_barcode)
-tcga_sampleAnnot$ER_status <- sampleAnnot[as.character(tcga_sampleAnnot$patient_barcode)]
-stopifnot(!is.na(tcga_sampleAnnot$ER_status))
-table(tcga_sampleAnnot$ER_status)
-# [Not Evaluated]   Indeterminate        Negative        Positive 
-# 48               2             251             826 
-stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
-ERpos_samples <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$ER_status == "Positive"] 
-nERpos <- length(ERpos_samples)
-cat(nERpos, "\n")
-# 826
-ERneg_samples <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$ER_status == "Negative"] 
-nERneg <- length(ERneg_samples)
-cat(nERneg, "\n")
-# 251
+###~~~ 5th FILTER: her2 lumB STATUS FILTER
+
+### retrieve PAM50 annotation
+#source("http://www.bioconductor.org/biocLite.R")
+library(TCGAbiolinks)
+cancer <- "BRCA"
+PlatformCancer <- "IlluminaHiSeq_RNASeqV2"
+dataType <- "rsem.genes.results"
+pathCancer <- "TCGAData/miRNA"
+
+tcga_sampleAnnot$id_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_sampleAnnot$cgc_sample_id)
+cat("any duplicated(tcga_sampleAnnot$id_for_survival)", "\n")
+cat(any(duplicated(tcga_sampleAnnot$id_for_survival)), "\n")
+head(colnames(tcga_counts_raw_all))
+head( tcga_sampleAnnot$id_for_survival)
+
+
+# get subtype information
+dataSubt <- TCGAquery_subtype(tumor = cancer)
+her2_ids <- dataSubt$patient[dataSubt$BRCA_Subtype_PAM50 == "Her2"]
+her2_ids <- her2_ids[her2_ids %in% tcga_sampleAnnot$id_for_survival]
+stopifnot(!duplicated(her2_ids))
+her2_samples <- setNames(rep("her2", length(her2_ids)), her2_ids)
+
+lumB_ids <- dataSubt$patient[dataSubt$BRCA_Subtype_PAM50 == "LumB"]
+lumB_ids <- lumB_ids[lumB_ids %in% tcga_sampleAnnot$id_for_survival]
+stopifnot(!duplicated(lumB_ids))
+lumB_samples <- setNames(rep("lumB", length(lumB_ids)), lumB_ids)
+
+
+nHer2 <- length(her2_samples)
+nLumB <- length(lumB_samples)
 
 #*** update here
 # ~~~~ KEEP ONLY THE ONES THAT PASSED THE ER STATUS FILTER
-cat(paste0("... filter 5 - ER status: ",nERpos+nERneg, "/", nrow(tcga_sampleAnnot), "\n"))
-tcga_sampleAnnot <- tcga_sampleAnnot[c(ERpos_samples, ERneg_samples),]
-tcga_counts_raw_all <- tcga_counts_raw_all[,c(ERpos_samples, ERneg_samples)]  # filter also filter 4
+cat(paste0("... filter 5 - her2 and lumB: ", nHer2 + nLumB , "/", nrow(tcga_sampleAnnot), "\n"))
+
+lum_samples <- c(her2_samples, lumB_samples)
+
+tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$id_for_survival %in% c(names(her2_samples), names(lumB_samples)),]
+stopifnot(nrow(tcga_sampleAnnot) > 0)
+
+stopifnot(tcga_sampleAnnot$id_for_survival %in% names(lum_samples))
+
+cat(paste0("# her2 = ", length(her2_samples), "\n"))
+cat(paste0("# lumB = ", length(lumB_samples), "\n"))
+
+
+cat(paste0("# rows tcga_sampleAnnot = ", nrow(tcga_sampleAnnot), "\n"))
+
+stopifnot(setequal(c(her2_samples, lumB_samples),lum_samples))
+stopifnot(tcga_sampleAnnot$id_for_survival %in% names(lum_samples))
+
+tcga_sampleAnnot$PAM50 <- lum_samples[paste0(tcga_sampleAnnot$id_for_survival)]
+stopifnot(!is.na(tcga_sampleAnnot$PAM50))
+
+cat(paste0("sum(tcga_sampleAnnot$PAM50 ==her2) = ", sum(tcga_sampleAnnot$PAM50 =="her2"), "\n"))
+
+stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
+
+stopifnot(!is.na(tcga_sampleAnnot$PAM50))
+her2_samps <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$PAM50 =="her2"]
+
+cat(paste0("length(her2_samps)=", length(her2_samps), "\n"))
+cat(paste0("nHer2=", nHer2, "\n"))
+
+# stopifnot(length(her2_samps) == nHer2) # not TRUE here because duplicated samples
+
+lumB_samps <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$PAM50 =="lumB"]
+# stopifnot(length(lumB_samps) == nLumB) not true here because dup samples
+
+stopifnot(lumB_samps %in% colnames(tcga_counts_raw_all))
+stopifnot(her2_samps %in% colnames(tcga_counts_raw_all))
+
+#*** update here
+# ~~~~ KEEP ONLY THE ONES THAT PASSED THE ER STATUS FILTER
+tcga_counts_raw_all <- tcga_counts_raw_all[,c(her2_samps, lumB_samps)]  # filter also filter 4
 stopifnot(!is.na(tcga_counts_raw_all))  
 cat(paste0(dim(tcga_counts_raw_all), "\n"))
 
 cat(paste0("--- check gene - filt5: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
+
+
+
+tcga_sampleAnnot <- tcga_sampleAnnot[c(her2_samps, lumB_samps),]
+
+stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
+
+stopifnot(lumB_samps %in% colnames(tcga_counts_raw_all))
+stopifnot(her2_samps %in% colnames(tcga_counts_raw_all))
+
+
+tcga_counts_raw_all <- tcga_counts_raw_all[,c(her2_samps, lumB_samps)]
+stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
+
+
+
+###*# retrieve ER+ ER- status
+# as indicated here: https://www.biostars.org/p/279048/#279069
+# # download from https://portal.gdc.cancer.gov/legacy-archive/search/f, 9/9/21
+# full_annot_dt <- read.delim("nationwidechildrens.org_clinical_patient_brca.txt", header=TRUE, stringsAsFactors = FALSE)
+# head(full_annot_dt$bcr_patient_barcode)
+# head(full_annot_dt$er_status_by_ihc)
+# head(full_annot_dt$nte_er_status)
+# head(full_annot_dt$bcr_patient_uuid)
+# [1] "bcr_patient_uuid"                     "CDE_ID:"                             
+# [3] "6E7D5EC6-A469-467C-B748-237353C23416" "55262FCB-1B01-4480-B322-36570430C917"
+# [5] "427D0648-3F77-4FFC-B52C-89855426D647" "C31900A4-5DCD-4022-97AC-638E86E889E4"
+# head(full_annot_dt$bcr_patient_barcode)
+# # [1] "bcr_patient_barcode" "CDE_ID:2673794"      "TCGA-3C-AAAU"        "TCGA-3C-AALI"       
+# # [5] "TCGA-3C-AALJ"        "TCGA-3C-AALK"       
+# head(full_annot_dt$patient_id)
+# [1] "patient_id" "CDE_ID:"    "AAAU"       "AALI"       "AALJ"       "AALK"      
+### subset ER+/- before the median
+# tcga_sampleAnnot$patient_barcode <- substr(start=1, stop=12, tcga_sampleAnnot$cgc_sample_id)
+# stopifnot(tcga_sampleAnnot$patient_barcode %in% full_annot_dt$bcr_patient_barcode)
+# stopifnot(!duplicated(tcga_sampleAnnot$patient_barcode))
+
+# stopifnot(names(her2_samples) %in% tcga_sampleAnnot$id_for_survival)
+# stopifnot(names(lumB_samples) %in% tcga_sampleAnnot$id_for_survival)
+# 
+# 
+# sampleAnnot <- setNames(full_annot_dt$er_status_by_ihc, full_annot_dt$bcr_patient_barcode)
+# tcga_sampleAnnot$ER_status <- sampleAnnot[as.character(tcga_sampleAnnot$patient_barcode)]
+# stopifnot(!is.na(tcga_sampleAnnot$ER_status))
+# table(tcga_sampleAnnot$ER_status)
+# # [Not Evaluated]   Indeterminate        Negative        Positive 
+# # 48               2             251             826 
+# stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
+# ERpos_samples <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$ER_status == "Positive"] 
+# nERpos <- length(ERpos_samples)
+# cat(nERpos, "\n")
+# # 826
+# ERneg_samples <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$ER_status == "Negative"] 
+# nERneg <- length(ERneg_samples)
+# cat(nERneg, "\n")
+# # 251
+
+# #*** update here
+# # ~~~~ KEEP ONLY THE ONES THAT PASSED THE ER STATUS FILTER
+# cat(paste0("... filter 5 - ER status: ",nERpos+nERneg, "/", nrow(tcga_sampleAnnot), "\n"))
+# tcga_sampleAnnot <- tcga_sampleAnnot[c(ERpos_samples, ERneg_samples),]
+# tcga_counts_raw_all <- tcga_counts_raw_all[,c(ERpos_samples, ERneg_samples)]  # filter also filter 4
+# stopifnot(!is.na(tcga_counts_raw_all))  
+# cat(paste0(dim(tcga_counts_raw_all), "\n"))
+# 
+# cat(paste0("--- check gene - filt5: ",   grepl(checkGene, rownames(tcga_counts_raw_all)), "\n"))
 
 
 ###~~~ FILTER 6: KEEP MAX MEDS FOR DUPLICATED SAMPLES
@@ -204,11 +305,6 @@ stopifnot(rownames(withdup_count_dt) == rownames(tcga_sampleAnnot))
 # check all should Solid Tumor; see https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes
 stopifnot(substr(start=14,stop=15,x=tcga_sampleAnnot$cgc_sample_id) %in% c("01"))# because filter primary tumor
 # update: could differ by vial
-tcga_sampleAnnot$id_for_survival <- gsub("(^.+?-.+?-.+?)-.+", "\\1", tcga_sampleAnnot$cgc_sample_id)
-cat("any duplicated(tcga_sampleAnnot$id_for_survival)", "\n")
-cat(any(duplicated(tcga_sampleAnnot$id_for_survival)), "\n")
-head(colnames(tcga_counts_raw_all))
-head( tcga_sampleAnnot$id_for_survival)
 
 withdup_count_dt$samp_id <- tcga_sampleAnnot$id_for_survival
 sum(duplicated(withdup_count_dt$samp_id))
@@ -284,57 +380,25 @@ stopifnot(!duplicated(tcga_sampleAnnot$id_for_survival))
 stopifnot(colnames(tcga_counts_raw_all) == rownames(tcga_sampleAnnot))
 
 
-### retrieve PAM50 annotation
-#source("http://www.bioconductor.org/biocLite.R")
-library(TCGAbiolinks)
-cancer <- "BRCA"
-PlatformCancer <- "IlluminaHiSeq_RNASeqV2"
-dataType <- "rsem.genes.results"
-pathCancer <- "TCGAData/miRNA"
-# get subtype information
-dataSubt <- TCGAquery_subtype(tumor = cancer)
-her2_ids <- dataSubt$patient[dataSubt$BRCA_Subtype_PAM50 == "LumA"]
-her2_ids <- her2_ids[her2_ids %in% tcga_sampleAnnot$id_for_survival]
-her2_samples <- setNames(rep("her2", length(her2_ids)), her2_ids)
-
-lumB_ids <- dataSubt$patient[dataSubt$BRCA_Subtype_PAM50 == "LumB"]
-lumB_ids <- lumB_ids[lumB_ids %in% tcga_sampleAnnot$id_for_survival]
-lumB_samples <- setNames(rep("lumB", length(lumB_ids)), lumB_ids)
-
-tcga_sampleAnnot <- tcga_sampleAnnot[tcga_sampleAnnot$id_for_survival %in% c(names(her2_samples), names(lumB_samples)),]
-stopifnot(nrow(tcga_sampleAnnot) > 0)
-
-nLumA <- length(her2_samples)
-nLumB <- length(lumB_samples)
-
-cat(paste0("# her2 = ", length(her2_samples), "\n"))
-cat(paste0("# lumB = ", length(lumB_samples), "\n"))
-
-lum_samples <- c(her2_samples, lumB_samples)
-
-tcga_sampleAnnot$PAM50 <- lum_samples[tcga_sampleAnnot$id_for_survival]
-stopifnot(!is.na(tcga_sampleAnnot$PAM50))
-
-stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
-
-her2_samps <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$PAM50 =="her2"]
-stopifnot(length(her2_samps) == nLumA)
-lumB_samps <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$PAM50 =="lumB"]
-stopifnot(length(lumB_samps) == nLumB)
-tcga_sampleAnnot <- tcga_sampleAnnot[c(her2_samps, lumB_samps),]
-
-stopifnot(rownames(tcga_sampleAnnot) %in% colnames(tcga_counts_raw_all))
-tcga_counts_raw_all <- tcga_counts_raw_all[,c(her2_samps, lumB_samps)]
-stopifnot(rownames(tcga_sampleAnnot) == colnames(tcga_counts_raw_all))
-
-
 tcga_counts_all <- tcga_counts_raw_all
 stopifnot(tcga_counts_all >= 0)
 
 stopifnot(rownames(tcga_counts_all) == gene_dt$geneID)
 stopifnot(nrow(tcga_counts_all) == nrow(gene_dt))
+
+
+# need to redo because remove duplicated in the mean time
+her2_samps <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$PAM50 =="her2"]
+lumB_samps <- rownames(tcga_sampleAnnot)[tcga_sampleAnnot$PAM50 =="lumB"]
+
+stopifnot(setequal(rownames(tcga_sampleAnnot), c(her2_samps, lumB_samps)))
+stopifnot(her2_samps %in% colnames(tcga_counts_all))
+stopifnot(lumB_samps %in% colnames(tcga_counts_all))
+tcga_counts_all <- tcga_counts_all[,c(her2_samps, lumB_samps)]
+tcga_sampleAnnot <- tcga_sampleAnnot[c(her2_samps, lumB_samps),]
+
 stopifnot(colnames(tcga_counts_all) == c(her2_samps, lumB_samps))
-stopifnot(ncol(tcga_counts_all) == nLumA + nLumB)
+stopifnot(ncol(tcga_counts_all) == nHer2 + nLumB)
 
 stopifnot(colnames(tcga_counts_all) == rownames(tcga_sampleAnnot))
 stopifnot(!duplicated(tcga_sampleAnnot$cgc_sample_id))

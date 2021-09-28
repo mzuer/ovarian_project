@@ -1,5 +1,5 @@
 
-# Rscript phenopath_recount2_TCGA_BRCA_lumAlumB.R
+# Rscript phenopath_recount2_TCGA_BRCA_her2lumB.R
 
 require(recount)
 require(TCGAbiolinks)
@@ -64,11 +64,11 @@ mad_thresh <- 0
 
 purityFilter <- 0.6
 
-inFolder <- file.path("..","tcga_data","DOWNLOAD_TCGA_BRCA_LUMALUMB_RECOUNT2")
+inFolder <- file.path("..","tcga_data","DOWNLOAD_TCGA_BRCA_HER2LUMB_RECOUNT2")
 
 # setwd("~/Documents/FREITAS_LAB/ovarian_project/phenopath")
 
-outFolder <- "PHENOPATH_RECOUNT2_TCGA_BRCA_LUMALUMB"
+outFolder <- "PHENOPATH_RECOUNT2_TCGA_BRCA_HER2LUMB"
 dir.create(outFolder, recursive=TRUE)
 
 
@@ -169,17 +169,17 @@ brca_data_gcNorm_log <- log2(brca_dat_gcNorm + 1)
 nTCGA <- sum(grepl("^TCGA", colnames(brca_data_gcNorm_log)))
 stopifnot(nTCGA == ncol(brca_data_gcNorm_log))
 
-stopifnot(tcga_annot_dt$PAM50 %in% c("lumA", "lumB"))
+stopifnot(tcga_annot_dt$PAM50 %in% c("her2", "lumB"))
 
-lumA_samples <- colnames(brca_data_gcNorm_log)[colnames(brca_data_gcNorm_log) %in%
-                                                  tcga_annot_dt$cgc_sample_id[tcga_annot_dt$PAM50 == "lumA"]]
-nLumA <- length(lumA_samples)
+her2_samples <- colnames(brca_data_gcNorm_log)[colnames(brca_data_gcNorm_log) %in%
+                                                  tcga_annot_dt$cgc_sample_id[tcga_annot_dt$PAM50 == "her2"]]
+nHer2 <- length(her2_samples)
 
 lumB_samples <- colnames(brca_data_gcNorm_log)[colnames(brca_data_gcNorm_log) %in%
                                                   tcga_annot_dt$cgc_sample_id[tcga_annot_dt$PAM50 == "lumB"]]
 nLumB <- length(lumB_samples)
 
-stopifnot(colnames(brca_data_gcNorm_log) == c(lumA_samples, lumB_samples))
+stopifnot(colnames(brca_data_gcNorm_log) == c(her2_samples, lumB_samples))
 
 
 ################################### 
@@ -195,38 +195,38 @@ stopifnot(nrow(pca_brca_lowrepr) == nTCGA)
 
 stopifnot(rownames(pca_brca_lowrepr) == tcga_annot_dt$cgc_sample_id)
 
-mycolvect <- 1+as.numeric(tcga_annot_dt$PAM50 == "lumA")
+mycolvect <- 1+as.numeric(tcga_annot_dt$PAM50 == "her2")
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
         main="TCGA BRCA notNorm notFilt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA notNorm notFilt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA notNorm notFilt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -248,38 +248,38 @@ stopifnot(nrow(pca_brca_lowrepr) == nTCGA)
 
 stopifnot(rownames(pca_brca_lowrepr) == tcga_annot_dt$cgc_sample_id)
 
-mycolvect <- 1+as.numeric(tcga_annot_dt$PAM50 == "lumA")
+mycolvect <- 1+as.numeric(tcga_annot_dt$PAM50 == "her2")
 
-outFile <- file.path(outFolder, paste0("in_norm_data_pca_12_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_norm_data_pca_12_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
         main="TCGA BRCA norm notFilt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_norm_pca_23_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_norm_pca_23_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA norm notFilt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_norm_pca_13_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_norm_pca_13_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA norm notFilt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -297,13 +297,13 @@ var_exprs <- rowVars(brca_data_gcNorm_log)
 mad_exprs <- rowMads(brca_data_gcNorm_log)
 to_keep <-  var_exprs > var_thresh & mad_exprs > mad_thresh
 
-stopifnot(colnames(brca_data_gcNorm_log) == c(lumA_samples, lumB_samples))
+stopifnot(colnames(brca_data_gcNorm_log) == c(her2_samples, lumB_samples))
 
 var_exprs <- setNames(var_exprs,colnames(brca_data_gcNorm_log)) 
 mad_exprs <- setNames(mad_exprs,colnames(brca_data_gcNorm_log)) 
 
 # dev.off()
-outFile <- file.path(outFolder, paste0("all_vars_lumA_lumB_density.", plotType))
+outFile <- file.path(outFolder, paste0("all_vars_her2_lumB_density.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(density(var_exprs), main="all vars (log2(.+1))")
 mtext(side=3, text="(all)")
@@ -311,7 +311,7 @@ abline(v=var_thresh, col="red")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("all_mads_lumA_lumB_density.", plotType))
+outFile <- file.path(outFolder, paste0("all_mads_her2_lumB_density.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 plot(density(mad_exprs), main="all mads (log2(.+1))")
 mtext(side=3, text="(all)")
@@ -352,38 +352,38 @@ pc3 <- pca_brca_lowrepr[,3]
 
 stopifnot(rownames(pca_brca_lowrepr) == tcga_annot_dt$cgc_sample_id)
 
-mycolvect <- 1+as.numeric(tcga_annot_dt$PAM50 == "lumA")
+mycolvect <- 1+as.numeric(tcga_annot_dt$PAM50 == "her2")
 
-outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_12_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_12_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,2), summ_dt=summary(pca_brca),
         main="TCGA BRCA Norm+Filt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_23_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_23_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(2,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA Norm+Filt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
-outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_13_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_13_her2_lumB.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA Norm+Filt (log2(.+1))",
         col=mycolvect)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
-legend("topleft", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
+legend("topleft", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -394,13 +394,13 @@ cat(paste0("... written: ", outFile, "\n"))
 
 mc <- Mclust(pca_brca_lowrepr[,c(1,3)], G = 2)
 
-outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_13_lumA_lumB_withClust.", plotType))
+outFile <- file.path(outFolder, paste0("in_normFilt_data_pca_13_her2_lumB_withClust.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
 #dev.off()
 pcaplot(pca_dt=pca_brca_lowrepr, pctoplot=c(1,3), summ_dt=summary(pca_brca),
         main="TCGA BRCA Norm+Filt (log2(.+1))",
         col=mc$classification)
-mtext(text=paste0("nLumB=",nLumB, "; nLumA=",nLumA), side=3)
+mtext(text=paste0("nLumB=",nLumB, "; nHer2=",nHer2), side=3)
 legend("topleft", legend=c("clust1", "clust2"), pch=16, col=c(1,2), bty="n")
 dev.off()
 cat(paste0("... written: ", outFile, "\n"))
@@ -421,21 +421,21 @@ cat(paste0("... written: ", outFile, "\n"))
 # Instead we could encode LPS to 1 and PAM to 0, in which case the pathway loading λ would be the change under PAM and λ+β
 # the change under LPS stimulation..
 
-# so here give a value of 1 in lumA and a value of -1 in lumB
+# so here give a value of 1 in her2 and a value of -1 in lumB
 # This means the overall pathway loading λ is the average change for normal and tumor
 # if β > 0 =>  the gene is more upregulated over pseudotime under tumor  
 # if β  < 0 =>   the gene is more upregulated under normal 
 
 brca_data_filteredT <- t(brca_data_filtered)
 stopifnot(nGenes == ncol(brca_data_filteredT))
-stopifnot(nLumA+nLumB == nrow(brca_data_filteredT))
+stopifnot(nHer2+nLumB == nrow(brca_data_filteredT))
 
 # phenopath needs a cell-by-gene matrix = N×G matrix of gene expression (N=samples, G = genes)
-stopifnot(nrow(brca_data_filteredT) == nLumB+nLumA)
+stopifnot(nrow(brca_data_filteredT) == nLumB+nHer2)
 stopifnot(ncol(brca_data_filteredT) == nGenes)
-mycovar <- 2 * ( rownames(brca_data_filteredT) %in% lumA_samples) - 1
+mycovar <- 2 * ( rownames(brca_data_filteredT) %in% her2_samples) - 1
 stopifnot(sum(mycovar== -1) == nLumB)
-stopifnot(sum(mycovar== 1) == nLumA)
+stopifnot(sum(mycovar== 1) == nHer2)
 stopifnot(!is.na(mycovar))
 
 if(runPheno) {
@@ -490,7 +490,7 @@ brca_pseudotimes <-  trajectory(brca_phenopath_fit)
 brca_data_raw <- get(load(file.path(inFolder, paste0("all_counts_onlyPF_", purityFilter, ".Rdata"))))
 
 # filter because I have removed the outlier !
-stopifnot(colnames(brca_data_raw)==c(lumA_samples, lumB_samples))
+stopifnot(colnames(brca_data_raw)==c(her2_samples, lumB_samples))
 stopifnot(colnames(brca_data_raw) == tcga_annot_dt$cgc_sample_id)
 stopifnot(!duplicated(tcga_annot_dt$cgc_sample_id))
 
@@ -512,7 +512,7 @@ dge <- DGEList(counts = brca_data_raw[to_keep, ])
 ## Calculate normalization factors
 dge <- calcNormFactors(dge)
 
-x <- c(rep(1, length(lumA_samples)), rep(-1, length(lumB_samples)))
+x <- c(rep(1, length(her2_samples)), rep(-1, length(lumB_samples)))
 
 ### was done like:
 # design <- model.matrix(~ x, colData(sce))
@@ -649,7 +649,7 @@ plot(x = pc1,
      col = mycovar+3,
      pch=16, cex=0.7,
      cex.lab = 1.2, cex.axis=1.2)
-add_corr(pc1, brca_pseudotimes, cond_plus1="lumA", cond_minus1="lumB")
+add_corr(pc1, brca_pseudotimes, cond_plus1="her2", cond_minus1="lumB")
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -661,7 +661,7 @@ plot(x = pc2,
      col = mycovar+3,
      pch=16, cex=0.7,
      cex.lab = 1.2, cex.axis=1.2)
-add_corr(pc2, brca_pseudotimes, cond_plus1="lumA", cond_minus1="lumB")
+add_corr(pc2, brca_pseudotimes, cond_plus1="her2", cond_minus1="lumB")
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -673,7 +673,7 @@ plot(x = pc3,
      col = mycovar+3,
      pch=16, cex=0.7,
      cex.lab = 1.2, cex.axis=1.2)
-add_corr(pc3, brca_pseudotimes, cond_plus1="lumA", cond_minus1="lumB")
+add_corr(pc3, brca_pseudotimes, cond_plus1="her2", cond_minus1="lumB")
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -758,7 +758,7 @@ i_max <- which.max(df_beta$beta)
 p <- plot_iGeneExpr(igene= i_max,
               exprdt=brca_data_filteredT,
                pseudot=brca_pseudotimes,
-               covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+               covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                valuedt=df_beta,
                valuecol="beta", symbcol="geneSymb", subtit=paste0("highest ", betaU))
 
@@ -769,7 +769,7 @@ cat(paste0("... written: ", outFile, "\n"))
 p <- plot_iGeneExpr_gg2(igene= i_max,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
-                    covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                    covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                     valuedt=df_beta,
                     valuecol="beta", symbcol="geneSymb", subtit=paste0("highest ", betaU))
 
@@ -782,7 +782,7 @@ i_min <-which.min(df_beta$beta)
 p <- plot_iGeneExpr(igene= i_min,
                exprdt=brca_data_filteredT,
                pseudot=brca_pseudotimes,
-               covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+               covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                valuedt=df_beta,
                            valuecol="beta", symbcol="geneSymb", subtit=paste0("lowest ", betaU))
 
@@ -793,7 +793,7 @@ cat(paste0("... written: ", outFile, "\n"))
 p <- plot_iGeneExpr_gg2(igene= i_min,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
-                    covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                    covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                     valuedt=df_beta,
                     valuecol="beta", symbcol="geneSymb", subtit=paste0("lowest ", betaU))
 
@@ -810,7 +810,7 @@ selected_symbs <- c("ESR1", "FOXC1", "FBP1","FGD5", "METTL6", "CPT1A",
 # 1st row from the Campbell
 # 2nd row Gatza et al. "uniquely amplified in patients with highly proliferative luminal breast"
 # 3d row "marker genes" from Harbeck et al. 2019 - lumB
-# 4th row "marker genes" from Harbeck et al. 2019 - lumA [NB: ERS1 likely a typo, should be ESR1]
+# 4th row "marker genes" from Harbeck et al. 2019 - her2 [NB: ERS1 likely a typo, should be ESR1]
 
 gs="FOXC1"
 stopifnot(df_beta$gene == colnames(brca_data_filteredT))
@@ -849,7 +849,7 @@ stopifnot(!is.na(df_beta))
                                                   p <- plot_iGeneExpr_gg2(igene= i_gs,
                                                                           exprdt=brca_data_filteredT,
                                                                           pseudot=brca_pseudotimes,
-                                                                          covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                                                                          covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                                                                           valuedt=df_beta,
                                                                           valuecol="beta", symbcol="geneSymb",
                                                                           subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
@@ -896,7 +896,7 @@ for(i in 1:length(top_gs)) {
   p <- plot_iGeneExpr_gg2(igene= i_gs,
                           exprdt=brca_data_filteredT,
                           pseudot=brca_pseudotimes,
-                          covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                          covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                           valuedt=df_beta,
                           valuecol="beta", symbcol="geneSymb", 
                           subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
@@ -949,7 +949,7 @@ for(i in 1:length(top_gs)) {
   p <- plot_iGeneExpr_gg2(igene= i_gs,
                           exprdt=brca_data_filteredT,
                           pseudot=brca_pseudotimes,
-                          covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                          covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                           valuedt=df_beta,
                           valuecol="beta", symbcol="geneSymb", 
                           subtit=paste0(betaU, " rank=", gs_beta_rank, "; signif=",gs_signif ))
@@ -1177,10 +1177,10 @@ int_dt$is_sig_graph <-
 
 textinfo <- frame_data(
   ~x, ~y, ~label,
-  0.6, 0.15, "Gene upregulated\nLumA increases upregulation",
-  0.6, -0.15, "Gene upregulated\nLumA decreases upregulation",
-  -0.7, 0.15, "Gene downregulated\nLumA decreases downregulation",
-  -0.7, -0.15, "Gene downregulated\nLumA increases downregulation"
+  0.6, 0.15, "Gene upregulated\nHer2 increases upregulation",
+  0.6, -0.15, "Gene upregulated\nHer2 decreases upregulation",
+  -0.7, 0.15, "Gene downregulated\nHer2 decreases downregulation",
+  -0.7, -0.15, "Gene downregulated\nHer2 increases downregulation"
 )
 cols <- RColorBrewer::brewer.pal(3, "Set2")
 cols2 <- c("#c5e2d9", cols[2])
@@ -1224,7 +1224,7 @@ i_min <- which.min(int_dt$pathway_loading)
 p <- plot_iGeneExpr(igene= i_min,
                                  exprdt=brca_data_filteredT,
                                  pseudot=brca_pseudotimes,
-                                 covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                                 covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                                  valuedt=int_dt,
                                              valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("lowest ", lambdaU))
 
@@ -1235,7 +1235,7 @@ cat(paste0("... written: ", outFile, "\n"))
 p <- plot_iGeneExpr_gg2(igene= i_min,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
-                    covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                    covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                     valuedt=int_dt,
                     valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("lowest ", lambdaU))
 
@@ -1247,7 +1247,7 @@ i_max <- which.max(int_dt$pathway_loading)
 p <- plot_iGeneExpr(igene= i_max,
                exprdt=brca_data_filteredT,
                pseudot=brca_pseudotimes,
-               covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+               covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                valuedt=int_dt,
                valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("highest ", lambdaU))
 
@@ -1259,7 +1259,7 @@ cat(paste0("... written: ", outFile, "\n"))
 p <- plot_iGeneExpr_gg2(igene= i_max,
                     exprdt=brca_data_filteredT,
                     pseudot=brca_pseudotimes,
-                    covarlab=ifelse(mycovar == 1, "lumA", "lumB"),
+                    covarlab=ifelse(mycovar == 1, "her2", "lumB"),
                     valuedt=int_dt,
                     valuecol="pathway_loading", symbcol="featureSymb", subtit=paste0("highest ", lambdaU))
 
@@ -1311,7 +1311,7 @@ cat(paste0("... written: ", outFile, "\n"))
 
 ############## PC dots with color-coded by pseudotime gradient ##############  <<<<<<<<<<<<<<< FIG 6a
 
-myconds <- ifelse(rownames(pca_brca_lowrepr) %in% lumA_samples, "lumA", 
+myconds <- ifelse(rownames(pca_brca_lowrepr) %in% her2_samples, "her2", 
                   ifelse(rownames(pca_brca_lowrepr) %in% lumB_samples, "lumB", NA))
 stopifnot(!is.na(myconds))
 
@@ -1319,9 +1319,9 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(2,3), summ_dt=s
             condvect = myconds,
             colvect=brca_pseudotimes,
             mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
-            mysubtit = paste0("nLumA=",nLumA, "; nLumB=",nLumB))
+            mysubtit = paste0("nHer2=",nHer2, "; nLumB=",nLumB))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_her2_lumB.", plotType))
 ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -1330,9 +1330,9 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,2), summ_dt=s
                  condvect = myconds,
                  colvect=brca_pseudotimes,
                  mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
-                 mysubtit = paste0("nLumA=",nLumA, "; nLumB=",nLumB))
+                 mysubtit = paste0("nHer2=",nHer2, "; nLumB=",nLumB))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_her2_lumB.", plotType))
 ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -1340,9 +1340,9 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,3), summ_dt=s
                  condvect = myconds,
             colvect=brca_pseudotimes,
             mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
-            mysubtit = paste0("nLumA=",nLumA, "; nLumB=",nLumB))
+            mysubtit = paste0("nHer2=",nHer2, "; nLumB=",nLumB))
 
-outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_pseudotimeGrad_lumA_lumB.", plotType))
+outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_pseudotimeGrad_her2_lumB.", plotType))
 ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -1398,13 +1398,13 @@ cat(paste0("... written: ", outFile, "\n"))
 
 stopifnot(length(brca_pseudotimes) == nrow(pp_input_data))
 
-lumA_samp <- which(rownames(pp_input_data) %in% lumA_samples)
-stopifnot(length(lumA_samp) == nLumA)
-stopifnot(rownames(pp_input_data[lumA_samp]) == rownames(pp_input_data[lumA_samples]))
-corr_expr_pt_lumA <- apply(pp_input_data[lumA_samp,], 2, cor, brca_pseudotimes[lumA_samp])
-cdf_lumA <- data.frame(feature = all_genes, 
-                  correlation = corr_expr_pt_lumA)
-stopifnot(!is.na(cdf_lumA))
+her2_samp <- which(rownames(pp_input_data) %in% her2_samples)
+stopifnot(length(her2_samp) == nHer2)
+stopifnot(rownames(pp_input_data[her2_samp]) == rownames(pp_input_data[her2_samples]))
+corr_expr_pt_her2 <- apply(pp_input_data[her2_samp,], 2, cor, brca_pseudotimes[her2_samp])
+cdf_her2 <- data.frame(feature = all_genes, 
+                  correlation = corr_expr_pt_her2)
+stopifnot(!is.na(cdf_her2))
 
 lumB_samp <- which(rownames(pp_input_data) %in% lumB_samples)
 stopifnot(length(lumB_samp) == nLumB)
@@ -1418,10 +1418,10 @@ stopifnot(!is.na(cdf_lumB))
 
 outFile <- file.path(outFolder, paste0("corr_gene_expr_pseudot_distribution.", plotType))
 do.call(plotType, list(outFile, height=myHeight, width=myWidth))
-plot(density(cdf_lumA$correlation), main="corr. gene expr. and pseudotimes", col=2)
+plot(density(cdf_her2$correlation), main="corr. gene expr. and pseudotimes", col=2)
 lines(density(cdf_lumB$correlation), col=1)
-legend("topright", legend=c("lumB", "lumA"), pch=16, col=c(1,2), bty="n")
-mtext(side=3, text=paste0("(# lumB=", nLumB, "; # lumA=", nLumA, ")"))
+legend("topright", legend=c("lumB", "her2"), pch=16, col=c(1,2), bty="n")
+mtext(side=3, text=paste0("(# lumB=", nLumB, "; # her2=", nHer2, ")"))
 foo <- dev.off()
 cat(paste0("... written: ", outFile, "\n"))
 
@@ -1536,7 +1536,7 @@ cat(paste0("... written: ", outFile, "\n"))
 brca_data_raw <- get(load(file.path(inFolder, paste0("all_counts_onlyPF_", purityFilter, ".Rdata"))))
 
 # filter because I have removed the outlier !
-stopifnot(colnames(brca_data_raw)==c(lumA_samples, lumB_samples))
+stopifnot(colnames(brca_data_raw)==c(her2_samples, lumB_samples))
 stopifnot(colnames(brca_data_raw) == tcga_annot_dt$cgc_sample_id)
 stopifnot(!duplicated(tcga_annot_dt$cgc_sample_id))
 
@@ -1558,8 +1558,8 @@ dge <- DGEList(counts = brca_data_raw[to_keep, ])
 ## Calculate normalization factors
 dge <- calcNormFactors(dge)
 # plotMDS(dge)
-samples_groups <- c(rep("lumA", length(lumA_samples)), rep("lumB", length(lumB_samples)))
-my_group_design <- factor(samples_groups, levels = c("lumA", "lumB"))
+samples_groups <- c(rep("her2", length(her2_samples)), rep("lumB", length(lumB_samples)))
+my_group_design <- factor(samples_groups, levels = c("her2", "lumB"))
 my_design <- model.matrix( ~ my_group_design)
 ## Run voom
 v <- voom(dge, my_design, plot = TRUE)
@@ -1716,8 +1716,8 @@ if(genesymb2 %in% rownames(brca_data_filtered) & genesymb1 %in% rownames(brca_da
   
   plot_dt <- data.frame(t(brca_data_filtered[c(gene_id1,gene_id2),]))
   colnames(plot_dt) <- c("gene1", "gene2")
-  stopifnot(rownames(plot_dt) == c(lumA_samples, lumB_samples))
-  plot_dt$PAM50 <- c(rep("lumA", nLumA), rep("lumB", nLumB))
+  stopifnot(rownames(plot_dt) == c(her2_samples, lumB_samples))
+  plot_dt$PAM50 <- c(rep("her2", nHer2), rep("lumB", nLumB))
   
   p <- ggplot(plot_dt, aes(x = gene1, y = gene2, color = PAM50)) +
     geom_point(alpha = 0.6) +
@@ -1750,8 +1750,8 @@ if(genesymb2 %in% rownames(brca_data_filtered) & genesymb1 %in% rownames(brca_da
   
   plot_dt <- data.frame(t(brca_data_notFiltered[c(gene_id1,gene_id2),]))
   colnames(plot_dt) <- c("gene1", "gene2")
-  stopifnot(rownames(plot_dt) == c(lumA_samples, lumB_samples))
-  plot_dt$PAM50 <- c(rep("lumA", nLumA), rep("lumB", nLumB))
+  stopifnot(rownames(plot_dt) == c(her2_samples, lumB_samples))
+  plot_dt$PAM50 <- c(rep("her2", nHer2), rep("lumB", nLumB))
   
   p <- ggplot(plot_dt, aes(x = gene1, y = gene2, color = PAM50)) +
     geom_point(alpha = 0.6) +
@@ -1889,19 +1889,19 @@ cat(paste0("... written: ", outFile, "\n"))
                                               # stopifnot(genes_ens %in% rownames(brca_data_filtered))
                                               # 
                                               # lumB_samples <- tcga_annot_dt$cgc_sample_id[tcga_annot_dt$PAM50 == "lumB"]
-                                              # lumA_samples <- tcga_annot_dt$cgc_sample_id[tcga_annot_dt$PAM50 == "lumA"]
+                                              # her2_samples <- tcga_annot_dt$cgc_sample_id[tcga_annot_dt$PAM50 == "her2"]
                                               # 
-                                              # stopifnot(colnames(brca_data_filtered) == c(lumA_samples, lumB_samples))
-                                              # stopifnot(rownames(brca_data_filteredT) == c(lumA_samples, lumB_samples))
+                                              # stopifnot(colnames(brca_data_filtered) == c(her2_samples, lumB_samples))
+                                              # stopifnot(rownames(brca_data_filteredT) == c(her2_samples, lumB_samples))
                                               # brca_pts <-  trajectory(brca_phenopath_fit)
-                                              # names(brca_pts) <- c(lumA_samples, lumB_samples)
+                                              # names(brca_pts) <- c(her2_samples, lumB_samples)
                                               # 
                                               # selected_expr_dt <- brca_data_filtered[genes_ens,]
                                               # m_sexpr_dt <- melt(t(selected_expr_dt))
                                               # colnames(m_sexpr_dt) <- c("samp", "gene","logexpr")
                                               # m_sexpr_dt$geneSymb <- ens2genes[as.character(m_sexpr_dt$gene)]
                                               # m_sexpr_dt$PAM50 <- ifelse(m_sexpr_dt$samp %in% lumB_samples, "lumB",
-                                              #                                ifelse(m_sexpr_dt$samp %in% lumA_samples, "lumA",NA))
+                                              #                                ifelse(m_sexpr_dt$samp %in% her2_samples, "her2",NA))
                                               # m_sexpr_dt$pseudotime <- brca_pts[m_sexpr_dt$samp]
                                               # stopifnot(!is.na(m_sexpr_dt))
                                               # 
@@ -1910,14 +1910,14 @@ cat(paste0("... written: ", outFile, "\n"))
                                               # classify_cell <- function(row) {
                                               #   if(row['pseudotime'] > 0.5) return("end")
                                               #   if(row['pseudotime'] < -0.3 && row['PAM50'] == "lumB") return('beginning-lumB')
-                                              #   if(row['pseudotime'] < -0.3 && row['PAM50'] == "lumA") return("beginning-lumA")
+                                              #   if(row['pseudotime'] < -0.3 && row['PAM50'] == "her2") return("beginning-her2")
                                               #   return(NA)
                                               # }
                                               # classify_cell_mz <- function(row) {
-                                              #   if(row['pseudotime'] > 0.5 && row['PAM50'] == "lumA") return('end-lumA')
+                                              #   if(row['pseudotime'] > 0.5 && row['PAM50'] == "her2") return('end-her2')
                                               #   if(row['pseudotime'] > 0.5 && row['PAM50'] == "lumB") return('end-lumB')
                                               #   if(row['pseudotime'] < -0.3 && row['PAM50'] == "lumB") return('beginning-lumB')
-                                              #   if(row['pseudotime'] < -0.3 && row['PAM50'] == "lumA") return("beginning-lumA")
+                                              #   if(row['pseudotime'] < -0.3 && row['PAM50'] == "her2") return("beginning-her2")
                                               #   return(NA)
                                               # }
                                               # 
@@ -2049,7 +2049,7 @@ stopifnot(tcga_annot_dt$labs_for_survival %in% surv_dt$bcr_patient_barcode)
 stopifnot(tcga_annot_dt$patient_barcode == tcga_annot_dt$labs_for_survival)
 stopifnot(!duplicated(tcga_annot_dt$labs_for_survival))
 
-all_lumStatus <- ifelse(tcga_annot_dt$PAM50 == "lumA", "lumA",
+all_lumStatus <- ifelse(tcga_annot_dt$PAM50 == "her2", "her2",
                        ifelse(tcga_annot_dt$PAM50 == "lumB", "lumB", NA))
 stopifnot(!is.na(all_lumStatus))
 all_lumStatus <- setNames(all_lumStatus, tcga_annot_dt$labs_for_survival)
@@ -2073,11 +2073,10 @@ surv_dt <- surv_dt[surv_dt$pseudotime > 0,]
 # let’s run a Cox PH model
 # By default it’s going to treat lumB cancer as the baseline, because alphabetically it’s first.
 coxph(Surv(times, patient.vital_status)~PAM50 + pseudotime, data=surv_dt)
-# This tells us that compared to the baseline lumB group, lumA have ~0.7x increase in hazards, 
+# This tells us that compared to the baseline lumB group, her2 have ~0.7x increase in hazards, 
 # and pseuodtime 1.12x worse survival. 
 # Let’s create a survival curve, visualize it with a Kaplan-Meier plot, and show a table for the first 5 years survival rates.
 sfit <- survfit(Surv(times, patient.vital_status)~PAM50 + pseudotime, data=surv_dt)
-# time_range <- seq(0,800,2000)
 time_range <- seq(from=min(surv_dt$times),to=max(surv_dt$times), by=200)
 summary(sfit, times=time_range)
 
@@ -2278,7 +2277,7 @@ stopifnot(tcga_annot_dt$labs_for_survival %in% surv_dt$bcr_patient_barcode)
 stopifnot(tcga_annot_dt$patient_barcode == tcga_annot_dt$labs_for_survival)
 stopifnot(!duplicated(tcga_annot_dt$labs_for_survival))
 
-all_lumStatus <- ifelse(tcga_annot_dt$PAM50 == "lumA", "lumA",
+all_lumStatus <- ifelse(tcga_annot_dt$PAM50 == "her2", "her2",
                        ifelse(tcga_annot_dt$PAM50 == "lumB", "lumB", NA))
 stopifnot(!is.na(all_lumStatus))
 all_lumStatus <- setNames(all_lumStatus, tcga_annot_dt$labs_for_survival)
@@ -2302,7 +2301,7 @@ surv_dt <- surv_dt[surv_dt$pseudotime > 0,]
 # let’s run a Cox PH model
 # By default it’s going to treat lumB cancer as the baseline, because alphabetically it’s first.
 coxph(Surv(times, patient.vital_status)~PAM50 + pseudotime, data=surv_dt)
-# This tells us that compared to the baseline lumB group, lumA have ~0.7x increase in hazards, 
+# This tells us that compared to the baseline lumB group, her2 have ~0.7x increase in hazards, 
 # and pseuodtime 1.12x worse survival. 
 # Let’s create a survival curve, visualize it with a Kaplan-Meier plot, and show a table for the first 5 years survival rates.
 sfit <- survfit(Surv(times, patient.vital_status)~PAM50 + pseudotime, data=surv_dt)
@@ -2617,8 +2616,8 @@ df_gex <- t(exprs(sce))[, top_genes, drop=FALSE] %>%
   dplyr::mutate(phenotime = tmap, x = as.character(x)) %>% 
   gather(gene, expression, -phenotime, -x)
 df_gex$x[is.na(df_gex$x)] <- "NA"
-df_gex$x <- plyr::mapvalues(df_gex$x, from = sort(unique(df_gex$x)), to = c("lumB", "lumA"))
-df_gex$x <- factor(df_gex$x, levels = c("lumB", "lumA"))
+df_gex$x <- plyr::mapvalues(df_gex$x, from = sort(unique(df_gex$x)), to = c("lumB", "her2"))
+df_gex$x <- factor(df_gex$x, levels = c("lumB", "her2"))
 df_gex <- inner_join(df_gex, cross_df, by = "gene")
 ggplot(df_gex, aes(x = phenotime, y = expression, color = x)) + 
   geom_point(alpha = 0.1) +
@@ -2708,7 +2707,7 @@ heatmap_plot <- last_plot()
 
 ```{r vasc-growth-fact}
 x_str <- plyr::mapvalues(x, from = sort(unique(x)),
-                         to = c("lumB", "lumA"))
+                         to = c("lumB", "her2"))
 tmap <- sce$tmap
 vgf <- c("VEGFA", "VEGFB", "VEGFC", "VEGFD", "FGF2", "CXCL8") 
 mm <- match(vgf, rowData(sce_gene)$hgnc_symbol)

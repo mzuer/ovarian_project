@@ -29,9 +29,9 @@ httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ense
 ############################################## 
 
 
-breast_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "breast")
-
-save(breast_rec2_tcga, file=file.path(outFolder, "breast_rec2_tcga.Rdata"))
+# breast_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "breast")
+# save(breast_rec2_tcga, file=file.path(outFolder, "breast_rec2_tcga.Rdata"))
+breast_rec2_tcga <- get(load(file=file.path(outFolder, "breast_rec2_tcga.Rdata")))
 
 breast_rec2_tcga_scaled <- scale_counts(breast_rec2_tcga$tcga_breast)
 tcga_counts_raw_all <- assays(breast_rec2_tcga_scaled)$counts
@@ -312,55 +312,60 @@ sum(duplicated(withdup_count_dt$samp_id))
 nSampsCheck <- length(unique(withdup_count_dt$samp_id))
 dup_samples <- unique(withdup_count_dt$samp_id[duplicated(withdup_count_dt$samp_id)])
 
-if(compute_meds) {
-  no_dup_data <- withdup_count_dt[!withdup_count_dt$samp_id %in% dup_samples,]
+if(length(dup_samples) > 0) {
+  if(compute_meds) {
+    no_dup_data <- withdup_count_dt[!withdup_count_dt$samp_id %in% dup_samples,]
+    
+    dup_data <- withdup_count_dt[withdup_count_dt$samp_id %in% dup_samples,]
+    stopifnot(length(unique(dup_data$samp_id)) == length(dup_samples))
+    ### !!! TODO
+    cat(paste0("compute median dup samples\n"))
+    dup_data_duprm <- do.call(rbind, by(dup_data, dup_data$samp_id, function(sub_dt) {
+      # each row = a sample, keep the sample that has highest median value
+      tmp_dt <- data.frame(sub_dt)
+      tmp_dt$samp_id <- NULL
+      tmp_dt <- log10(tmp_dt+1)
+      stopifnot(!is.na(tmp_dt))
+      stopifnot(ncol(tmp_dt) == ncol(dup_data)-1)
+      stopifnot(nrow(tmp_dt) == nrow(sub_dt))
+      save(tmp_dt, file="tmp_dt.Rdata")
+      cat(paste0("written\n"))
+      all_meds <- apply(tmp_dt, 1, median)
+      all_meds <- rowMedians(as.matrix(tmp_dt))
+      stopifnot(length(all_meds) == nrow(sub_dt))
+      stopifnot(!is.na(all_meds))
+      to_keep <- which.max(all_meds)
+      stopifnot(length(to_keep) == 1)
+      # need this hack otherwise rownames will be samp_id
+      out_dt <- sub_dt[to_keep,, drop=FALSE]
+      out_dt$full_id <- rownames(sub_dt)[to_keep]
+      out_dt
+    }))
+    # need this hack otherwise rownames will be samp_id (because of by())
+    stopifnot(!duplicated(dup_data_duprm$full_id))
+    rownames(dup_data_duprm) <- dup_data_duprm$full_id
+    dup_data_duprm$full_id <- NULL
+    stopifnot(nrow(dup_data_duprm) == length(dup_samples))
+    stopifnot(!duplicated(dup_data_duprm$samp_id))
+    cat(paste0("... ok meds\n"))
+    
+    stopifnot(colnames(dup_data_duprm) == colnames(no_dup_data))
+    
+    new_tcga_counts_raw_all <- rbind(dup_data_duprm, no_dup_data)
+    new_tcga_counts_raw_all$samp_id <- NULL
+    new_tcga_counts_raw_all <- t(new_tcga_counts_raw_all)
+    stopifnot(rownames(new_tcga_counts_raw_all) == rownames(tcga_counts_raw_all))
+    stopifnot(colnames(new_tcga_counts_raw_all) %in% colnames(tcga_counts_raw_all))
+    outFile <- file.path(outFolder,"new_tcga_counts_raw_all.Rdata" )
+    save(new_tcga_counts_raw_all, file=outFile)
+    cat(paste0("... written: ", outFile, "\n"))
+  } else {
+    outFile <- file.path(outFolder,"new_tcga_counts_raw_all.Rdata" )
+    new_tcga_counts_raw_all <- get(load(outFile))
+  }
   
-  dup_data <- withdup_count_dt[withdup_count_dt$samp_id %in% dup_samples,]
-  stopifnot(length(unique(dup_data$samp_id)) == length(dup_samples))
-  ### !!! TODO
-  cat(paste0("compute median dup samples\n"))
-  dup_data_duprm <- do.call(rbind, by(dup_data, dup_data$samp_id, function(sub_dt) {
-    # each row = a sample, keep the sample that has highest median value
-    tmp_dt <- data.frame(sub_dt)
-    tmp_dt$samp_id <- NULL
-    tmp_dt <- log10(tmp_dt+1)
-    stopifnot(!is.na(tmp_dt))
-    stopifnot(ncol(tmp_dt) == ncol(dup_data)-1)
-    stopifnot(nrow(tmp_dt) == nrow(sub_dt))
-    save(tmp_dt, file="tmp_dt.Rdata")
-    cat(paste0("written\n"))
-    all_meds <- apply(tmp_dt, 1, median)
-    all_meds <- rowMedians(as.matrix(tmp_dt))
-    stopifnot(length(all_meds) == nrow(sub_dt))
-    stopifnot(!is.na(all_meds))
-    to_keep <- which.max(all_meds)
-    stopifnot(length(to_keep) == 1)
-    # need this hack otherwise rownames will be samp_id
-    out_dt <- sub_dt[to_keep,, drop=FALSE]
-    out_dt$full_id <- rownames(sub_dt)[to_keep]
-    out_dt
-  }))
-  # need this hack otherwise rownames will be samp_id (because of by())
-  stopifnot(!duplicated(dup_data_duprm$full_id))
-  rownames(dup_data_duprm) <- dup_data_duprm$full_id
-  dup_data_duprm$full_id <- NULL
-  stopifnot(nrow(dup_data_duprm) == length(dup_samples))
-  stopifnot(!duplicated(dup_data_duprm$samp_id))
-  cat(paste0("... ok meds\n"))
-  
-  stopifnot(colnames(dup_data_duprm) == colnames(no_dup_data))
-  
-  new_tcga_counts_raw_all <- rbind(dup_data_duprm, no_dup_data)
-  new_tcga_counts_raw_all$samp_id <- NULL
-  new_tcga_counts_raw_all <- t(new_tcga_counts_raw_all)
-  stopifnot(rownames(new_tcga_counts_raw_all) == rownames(tcga_counts_raw_all))
-  stopifnot(colnames(new_tcga_counts_raw_all) %in% colnames(tcga_counts_raw_all))
-  outFile <- file.path(outFolder,"new_tcga_counts_raw_all.Rdata" )
-  save(new_tcga_counts_raw_all, file=outFile)
-  cat(paste0("... written: ", outFile, "\n"))
 } else {
-  outFile <- file.path(outFolder,"new_tcga_counts_raw_all.Rdata" )
-  new_tcga_counts_raw_all <- get(load(outFile))
+  new_tcga_counts_raw_all <- tcga_counts_raw_all
 }
 
 cat(paste0("... filter 6 - dup samples: ",ncol(new_tcga_counts_raw_all), "/", ncol(tcga_counts_raw_all), "\n"))

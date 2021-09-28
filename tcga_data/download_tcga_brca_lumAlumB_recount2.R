@@ -29,9 +29,9 @@ httr::set_config(httr::config(ssl_verifypeer = FALSE))  ### added to access ense
 ############################################## 
 
 
-breast_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "breast")
-
-save(breast_rec2_tcga, file=file.path(outFolder, "breast_rec2_tcga.Rdata"))
+# breast_rec2_tcga <- TCGAquery_recount2(project="tcga", tissue = "breast")
+# save(breast_rec2_tcga, file=file.path(outFolder, "breast_rec2_tcga.Rdata"))
+breast_rec2_tcga <- get(load(file.path(outFolder, "breast_rec2_tcga.Rdata")))
 
 breast_rec2_tcga_scaled <- scale_counts(breast_rec2_tcga$tcga_breast)
 tcga_counts_raw_all <- assays(breast_rec2_tcga_scaled)$counts

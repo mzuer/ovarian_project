@@ -797,7 +797,7 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(2,3), summ_dt=s
             condvect = myconds,
             colvect=brca_pseudotimes,
             mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
-            mysubtit = paste0("nCond2=",nCond2, "; nCond1=",nCond1))
+            mysubtit = paste0("#", cond2, "=",nCond2, "; #", cond1, "=",nCond1))
 
 outFile <- file.path(outFolder, paste0("in_raw_data_pca_23_pseudotimeGrad_", cond1, "_", cond2, ".", plotType))
 ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
@@ -808,7 +808,7 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,2), summ_dt=s
                  condvect = myconds,
                  colvect=brca_pseudotimes,
                  mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
-                 mysubtit = paste0("nCond2=",nCond2, "; nCond1=",nCond1))
+                 mysubtit = paste0("#", cond2, "=",nCond2, "; #", cond1, "=",nCond1))
 
 outFile <- file.path(outFolder, paste0("in_raw_data_pca_12_pseudotimeGrad_", cond1, "_", cond2, ".", plotType))
 ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)
@@ -818,7 +818,7 @@ p <- pcaplot_gg2(pca_dt=data.frame(pca_brca_lowrepr), pctoplot=c(1,3), summ_dt=s
                  condvect = myconds,
             colvect=brca_pseudotimes,
             mytit = paste0("TCGA BRCA notNorm (log2(.+1))"),
-            mysubtit = paste0("nCond2=",nCond2, "; nCond1=",nCond1))
+            mysubtit = paste0("#", cond2, "=",nCond2, "; #", cond1, "=",nCond1))
 
 outFile <- file.path(outFolder, paste0("in_raw_data_pca_13_pseudotimeGrad_", cond1, "_", cond2, ".", plotType))
 ggsave(p, filename = outFile, height=myHeightGG*0.9, width=myWidthGG*1.5)

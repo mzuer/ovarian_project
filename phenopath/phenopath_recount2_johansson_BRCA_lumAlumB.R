@@ -46,7 +46,7 @@ betaU <-"\u03B2"
 lambdaU <- "\u03BB"
 chiU <- "\u03C7"
 
-runPheno <- T
+runPheno <- F
 
 cond1 <- "LumA"
 cond2 <- "LumB"
@@ -780,7 +780,7 @@ p <-  ggplot(dfLambda_topGenes, aes(x = featureSymb, y = pathway_loading, color 
         plot.subtitle = element_text(hjust=0.5),
         axis.text.x = element_text(angle = 90, hjust = 1),
         axis.title.x = element_blank()) +
-  ylab(expression(beta)) +
+  ylab(expression(lambda)) +
   scale_color_brewer(palette = "Set2", name = "Significant")
 
 outFile <- file.path(outFolder, paste0("genes_with_top_and_bottom_n", nTop, "_lambda.", plotType))

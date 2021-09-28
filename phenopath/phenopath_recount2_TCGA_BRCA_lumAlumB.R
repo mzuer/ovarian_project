@@ -1118,7 +1118,7 @@ p <- ggplot(int_dt, aes(x = interaction_effect_size, y = 1 / chi,
   scale_x_continuous(breaks = scales::pretty_breaks(n = 10))+
   scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
   geom_text_repel(data = dplyr::filter(int_dt, chi < chi_cutoff),
-                  aes(label = featureSymb)) +
+                  aes(label = featureSymb),show.legend = FALSE) +
   labs(color="significant")+
   scale_colour_brewer(palette = "Set1")+
   theme(plot.subtitle = element_text(hjust=0.5),
@@ -1150,7 +1150,7 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size,
   ylab(paste0("posterior interaction effect sizes (", betaU, ")"))+
   xlab(paste0("pathway loading (", lambdaU, ")"))+
   geom_text_repel(data = dplyr::filter(int_dt, chi < chi_cutoff),
-                  aes(label = featureSymb), size = 5) +
+                  aes(label = featureSymb),show.legend = FALSE, size = 5) +
   scale_colour_brewer(palette = "Set1")  +
   labs(color="significant")+
   scale_x_continuous(breaks = scales::pretty_breaks(n = 10))+
@@ -1192,7 +1192,7 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) +
   scale_fill_manual(values = cols2, name = "Interaction") +
   scale_color_manual(values = outline_cols, name = "Interaction") +
   geom_text_repel(data = dplyr::filter(int_dt, significant_interaction, abs(interaction_effect_size) > 0.7),
-                  aes(label = featureSymb), color = 'black',
+                  aes(label = featureSymb), color = 'black',show.legend = FALSE,
                   size = 3) +
   ylab("Covariate-pseudotime interaction") +
   xlab("Gene regulation over pseudotime") +
@@ -1202,7 +1202,7 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) +
         legend.title = element_text(size = 11),
         legend.text = element_text(size = 10)) +
   geom_text(data = textinfo, aes(x = x, y = y, label = label), 
-            color = 'black', size = 3, fontface = "bold")
+            color = 'black', size = 3, fontface = "bold",show.legend = FALSE)
 
 
 outFile <- file.path(outFolder, paste0("posteriorEffectSizeBeta_vs_pathwayloadingLambda_nicer.", plotType))
@@ -2081,7 +2081,8 @@ sfit <- survfit(Surv(times, patient.vital_status)~PAM50 + pseudotime, data=surv_
 time_range <- seq(from=min(surv_dt$times),to=max(surv_dt$times), by=200)
 summary(sfit, times=time_range)
 
-surv_dt$pt_bin <- cut(surv_dt$pseudotime, breaks=seq(0,1,0.25))
+pt_r <- seq(min(surv_dt$pseudotime), max(surv_dt$pseudotime),0.25)
+surv_dt$pt_bin <- cut(surv_dt$pseudotime, breaks=c(min(pt_r)-0.25, pt_r, max(pt_r)+0.25))
 stopifnot(!is.na(surv_dt$pt_bin))
 
 fit1 <- survfit(Surv(times,patient.vital_status) ~ pt_bin + strata(PAM50), data = surv_dt)
@@ -2309,7 +2310,8 @@ sfit <- survfit(Surv(times, patient.vital_status)~PAM50 + pseudotime, data=surv_
 time_range <- seq(0,800,2000)
 summary(sfit, times=time_range)
 
-surv_dt$pt_bin <- cut(surv_dt$pseudotime, breaks=seq(0,1,0.25))
+pt_r <- seq(min(surv_dt$pseudotime), max(surv_dt$pseudotime),0.25)
+surv_dt$pt_bin <- cut(surv_dt$pseudotime, breaks=c(min(pt_r)-0.25, pt_r, max(pt_r)+0.25))
 stopifnot(!is.na(surv_dt$pt_bin))
 
 fit1 <- survfit(Surv(times,patient.vital_status) ~ pt_bin + strata(PAM50), data = surv_dt)

@@ -595,7 +595,7 @@ p <- ggplot(int_dt, aes(x = interaction_effect_size, y = 1 / chi,
   geom_point() +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 10))+
   scale_y_continuous(breaks = scales::pretty_breaks(n = 10))+
-  geom_text_repel(data = dplyr::filter(int_dt, chi < chi_cutoff),
+  geom_text_repel(data = dplyr::filter(int_dt, chi < chi_cutoff), show.legend=FALSE,
                   aes(label = featureSymb)) +
   labs(color="significant")+
   scale_colour_brewer(palette = "Set1")+
@@ -627,7 +627,7 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size,
   geom_point() +
   ylab(paste0("posterior interaction effect sizes (", betaU, ")"))+
   xlab(paste0("pathway loading (", lambdaU, ")"))+
-  geom_text_repel(data = dplyr::filter(int_dt, chi < chi_cutoff),
+  geom_text_repel(data = dplyr::filter(int_dt, chi < chi_cutoff),show.legend=FALSE,
                   aes(label = featureSymb), size = 5) +
   scale_colour_brewer(palette = "Set1")  +
   labs(color="significant")+
@@ -655,10 +655,10 @@ int_dt$is_sig_graph <-
 
 textinfo <- frame_data(
   ~x, ~y, ~label,
-  0.6, 0.15, "Gene upregulated\nCond2 increases upregulation",
-  0.6, -0.15, "Gene upregulated\nCond2 decreases upregulation",
-  -0.7, 0.15, "Gene downregulated\nCond2 decreases downregulation",
-  -0.7, -0.15, "Gene downregulated\nCond2 increases downregulation"
+  0.6, 0.15, paste0("Gene upregulated\n", cond2, " increases upregulation"),
+  0.6, -0.15, paste0("Gene upregulated\n", cond2, " decreases upregulation"),
+  -0.7, 0.15, paste0("Gene downregulated\n", cond2, " decreases downregulation"),
+  -0.7, -0.15, paste0("Gene downregulated\n", cond2, " increases downregulation")
 )
 cols <- RColorBrewer::brewer.pal(3, "Set2")
 cols2 <- c("#c5e2d9", cols[2])
@@ -670,7 +670,7 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) +
   scale_fill_manual(values = cols2, name = "Interaction") +
   scale_color_manual(values = outline_cols, name = "Interaction") +
   geom_text_repel(data = dplyr::filter(int_dt, significant_interaction, abs(interaction_effect_size) > 0.7),
-                  aes(label = featureSymb), color = 'black',
+                  aes(label = featureSymb), color = 'black',show.legend=FALSE,
                   size = 3) +
   ylab("Covariate-pseudotime interaction") +
   xlab("Gene regulation over pseudotime") +
@@ -679,7 +679,7 @@ p <- ggplot(int_dt, aes(x = pathway_loading, y = interaction_effect_size)) +
         axis.title = element_text(size = 11),
         legend.title = element_text(size = 11),
         legend.text = element_text(size = 10)) +
-  geom_text(data = textinfo, aes(x = x, y = y, label = label), 
+  geom_text(data = textinfo, aes(x = x, y = y, label = label), show.legend=FALSE,
             color = 'black', size = 3, fontface = "bold")
 
 
